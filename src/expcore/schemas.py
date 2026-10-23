@@ -176,6 +176,10 @@ def validate_predictions(pred: pd.DataFrame, pairs: pd.DataFrame, *, require_com
         if not _finite_or_null(pred[col]).all():
             _fail("INV-08", f"predictions.{col}: Inf")
 
+    if pred.empty:
+        if require_complete and not pairs.empty:
+            _fail("INV-07", f"no predictions for an evaluated set of {len(pairs)} rows")
+        return
     has_pair, has_query = pred["pair_id"].notna(), pred["query_id"].notna()
     if (has_pair == has_query).any():
         _fail("INV-07", "exactly one of pair_id / query_id must be set in every row")

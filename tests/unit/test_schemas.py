@@ -232,3 +232,9 @@ def test_run_json():
     rec = copy.deepcopy(run_record()); del rec["environment"]["sha256"]
     with pytest.raises(DataValidationError, match="environment"):
         validate_run_json(rec)
+
+
+def test_inv07_empty_predictions_incomplete():   # Review Focus 2: no rows at all is not "complete"
+    empty = make_preds().iloc[:0]
+    expect("INV-07", validate_predictions, empty, make_pairs(), require_complete=True)
+    validate_predictions(empty, make_pairs(), require_complete=False)
