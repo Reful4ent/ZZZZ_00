@@ -259,21 +259,25 @@ def _no_nan(obj: Any, where: str) -> None:
 _DATASET_FIELDS = {
     "dataset_id": (_one_of(*ALLOWED_SPLITS), False),
     "source_url": (_is_str, False),
-    "archive_sha256": (_is_sha, False),
+    "archive_sha256": (_is_sha, True),   # null only when archive_verified is false
     "license": (_is_str, False),
     "discovered_counts": (_is_obj, False),
     "manifest_version": (_is_str, False),
-    "download_date": (_is_ts, False),
+    "download_date": (_is_ts, True),
     "archive_name": (_is_str, False),
     "archive_verified": (_is_bool, False),
     "license_file": (lambda v: _keys("path", "sha256")(v)
                      and (v["path"] is None or _is_str(v["path"]))
-                     and (v["sha256"] is None or _is_sha(v["sha256"])), False),
+                     and (v["sha256"] is None or _is_sha(v["sha256"])), True),
     "extra_archives": (_list_of(lambda a: _keys("name", "sha256")(a) and _is_str(a["name"]) and _is_sha(a["sha256"])),
                        False),
     "completeness": (_one_of(*COMPLETENESS), True),
     "subset_name": (_is_str, False),
 }
+
+
+# Provenance that may be unknown for unverified archives (smoke fixtures, missing downloads).
+_VERIFIED_REQUIRED = ("archive_sha256", "download_date", "license_file")
 
 
 def validate_datasets_json(obj: list[dict]) -> None:
@@ -287,6 +291,10 @@ def validate_datasets_json(obj: list[dict]) -> None:
         if rec["dataset_id"] in seen:
             _fail(where, f"duplicate dataset_id {rec['dataset_id']!r}")
         seen.add(rec["dataset_id"])
+        if rec["archive_verified"]:
+            unset = [k for k in _VERIFIED_REQUIRED if rec[k] is None]
+            if unset:
+                _fail(where, f"{unset}: required when archive_verified is true")
         if (rec["dataset_id"] == "hpatches") != (rec["completeness"] is not None):
             _fail(where, "completeness is required for hpatches and must be null for other datasets")
         if (rec["completeness"] == "subset") != ("subset_name" in rec):

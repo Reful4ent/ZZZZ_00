@@ -238,3 +238,12 @@ def test_inv07_empty_predictions_incomplete():   # Review Focus 2: no rows at al
     empty = make_preds().iloc[:0]
     expect("INV-07", validate_predictions, empty, make_pairs(), require_complete=True)
     validate_predictions(empty, make_pairs(), require_complete=False)
+
+
+def test_datasets_json_unverified_archive_allows_nulls():   # user decision 1a
+    unverified = dict(dataset_record(), archive_verified=False, archive_sha256=None, download_date=None,
+                      license_file=None)
+    validate_datasets_json([unverified])
+    for field in ("archive_sha256", "download_date", "license_file"):
+        with pytest.raises(DataValidationError, match=field):
+            validate_datasets_json([dict(dataset_record(), **{field: None})])   # verified: still required
