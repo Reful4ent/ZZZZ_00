@@ -1,0 +1,95 @@
+# Full config template (spec §5.6). Every key is required, unknown keys are
+# rejected, nothing has a default. Copy and fill in for a concrete run.
+schema_version: "1"
+protocol_version: "1"
+profile: pilot                 # smoke | pilot | confirmatory
+
+seeds:
+  seed: 11                     # single run; from the profile's allowed set
+  seeds: [11, 23, 37]          # plan expansion; from the profile's allowed set
+
+datasets:
+  kadid10k:
+    dataset_id: kadid10k
+    manifest_version: "v1"
+    fixture: false             # true only in the smoke profile
+    categories: null
+    n_validation: 20           # KADID real data: exactly 20
+    expected: {originals: 81, derivatives: 10125}
+    provenance:
+      source_url: "https://database.mmsp-kn.de/kadid-10k-database.html"
+      archive_name: "kadid10k.zip"
+      download_date: null
+      license: "see provider"
+      license_file: null
+  hpatches:
+    dataset_id: hpatches
+    manifest_version: "v1"
+    fixture: false
+    categories: null
+    n_validation: null
+    expected: {}               # empty: completeness reported as unverified
+    provenance:
+      source_url: "https://github.com/hpatches/hpatches-dataset"
+      archive_name: "hpatches-sequences-release.tar.gz"
+      download_date: null
+      license: "see provider"
+      license_file: null
+  mvtec_ad:
+    dataset_id: mvtec_ad
+    manifest_version: "v1"
+    fixture: false
+    categories: [carpet, leather, tile, wood]
+    n_validation: null
+    expected: {}
+    provenance:
+      source_url: "https://www.mvtec.com/company/research/datasets/mvtec-ad"
+      archive_name: "mvtec_anomaly_detection.tar.xz"
+      download_date: null
+      license: "CC BY-NC-SA 4.0"
+      license_file: null
+  sop:
+    dataset_id: sop
+    manifest_version: "v1"
+    fixture: false
+    categories: null
+    n_validation: null
+    expected: {products: 22634, train_images: 59551, test_images: 60502}
+    provenance:
+      source_url: "https://cvgl.stanford.edu/projects/lifted_struct/"
+      archive_name: "Stanford_Online_Products.zip"
+      download_date: null
+      license: "see provider"
+      license_file: null
+
+inputs:
+  pair_columns: [pair_id, query_id, reference_id, relation_id]   # y_match / gt_* forbidden
+  color_order: bgr             # bgr | rgb | gray
+
+data_modes:
+  oracle: {enabled: false, reason: null}
+
+algorithms: {}                 # {method_id: algorithm version}
+
+params: {}                     # module-specific; schema registered by the module
+
+decision:
+  tie_rule: ">="               # ">=" | ">"
+  criterion_id: null
+
+determinism:
+  deterministic_ops: true
+  opencv_threads: 1
+  numpy_threads: 1
+
+runner:
+  chunk_size: 256
+
+logging:
+  level: INFO
+  dir: logs
+
+paths:                         # excluded from config_hash; overridable from CLI
+  data_root: data
+  manifest_dir: data/manifests
+  out_root: out
