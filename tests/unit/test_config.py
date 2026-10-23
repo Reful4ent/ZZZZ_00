@@ -140,3 +140,10 @@ def test_strict_from_dict_nested():
     assert strict_from_dict(Outer, {"inner": {"x": 1}, "tags": ["a"], "note": None}) == Outer(Inner(1), ("a",), None)
     with pytest.raises(ConfigError, match="inner.y"):
         strict_from_dict(Outer, {"inner": {"x": 1, "y": 2}, "tags": [], "note": None})
+
+
+def test_duplicate_yaml_key_raises(tmp_path):   # review: last duplicate silently won
+    text = TEMPLATE.read_text(encoding="utf-8").replace('tie_rule: ">="', 'tie_rule: ">"\n  tie_rule: ">="')
+    p = tmp_path / "dup.yaml"; p.write_text(text, encoding="utf-8")
+    with pytest.raises(ConfigError, match="tie_rule"):
+        load_config(p, module="template")

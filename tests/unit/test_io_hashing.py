@@ -6,7 +6,7 @@ import pytest
 
 from expcore.errors import DataValidationError
 from expcore.hashing import canonical_json, sha256_file, table_content_hash
-from expcore.io import atomic_write_bytes, dump_json, read_parquet, write_parquet
+from expcore.io import atomic_write_bytes, dump_json, load_json, read_parquet, write_parquet
 
 pytestmark = pytest.mark.unit
 
@@ -50,3 +50,30 @@ def test_parquet_nullable_float_columns(tmp_path):
     assert read_parquet(tmp_path/"p.parquet")["s"].isna().tolist() == [False, True]
     with pytest.raises(DataValidationError):
         write_parquet(pd.DataFrame({"s": [np.inf]}), tmp_path/"q.parquet", nullable=("s",))
+
+
+def test_parquet_object_column_inf_rejected(tmp_path):   # review: INV-08 bypass via object dtype
+    df = pd.concat([pd.DataFrame({"s": [None]}), pd.DataFrame({"s": [np.inf]})], ignore_index=True)
+    assert df["s"].dtype == object
+    with pytest.raises(DataValidationError): write_parquet(df, tmp_path/"p.parquet", nullable=("s",))
+
+
+def test_parquet_schema_types_all_null_columns(tmp_path):   # review: all-reject shard got Arrow null type
+    import pyarrow.parquet as pq
+    df = pd.DataFrame({"s": [None, None], "y": [None, None], "k": ["a", "b"]})
+    write_parquet(df, tmp_path/"p.parquet", nullable=("s", "y"), schema={"s": "float64", "y": "int8", "k": "str"})
+    types = {f.name: str(f.type) for f in pq.read_schema(tmp_path/"p.parquet")}
+    assert types == {"s": "double", "y": "int8", "k": "string"}
+
+
+def test_table_hash_nullable_int_roundtrip(tmp_path):   # review: D-07 broke for nullable int columns
+    df = pd.DataFrame({"k": ["a", "b"], "seed": [2026, None]}, dtype=object)
+    h = table_content_hash(df, ["k", "seed"], ["k"])
+    write_parquet(df, tmp_path/"t.parquet", nullable=("seed",), schema={"k": "str", "seed": "int64"})
+    assert h == table_content_hash(read_parquet(tmp_path/"t.parquet"), ["k", "seed"], ["k"])
+
+
+def test_load_json_strict(tmp_path):   # review: NaN/Infinity and duplicate keys were accepted on read
+    for text in ('{"x": NaN}', '{"x": Infinity}', '{"x": 1, "x": 2}'):
+        (tmp_path/"a.json").write_text(text, encoding="utf-8")
+        with pytest.raises(DataValidationError): load_json(tmp_path/"a.json")

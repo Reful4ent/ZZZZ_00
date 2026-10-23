@@ -255,10 +255,23 @@ def _validate(cfg: Config) -> None:
         raise ConfigError(f"logging.level: {cfg.logging.level!r} not in {LOG_LEVELS}")
 
 
+class _UniqueKeyLoader(yaml.SafeLoader):
+    """SafeLoader that rejects repeated mapping keys instead of keeping the last one."""
+
+    def construct_mapping(self, node, deep=False):
+        seen = set()
+        for key_node, _ in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            if key in seen:
+                raise ConfigError(f"duplicate key {key!r} at line {key_node.start_mark.line + 1}")
+            seen.add(key)
+        return super().construct_mapping(node, deep=deep)
+
+
 def load_config(path: Path, *, module: str, path_overrides: Mapping[str, Path] | None = None) -> Config:
     try:
         with open(path, encoding="utf-8") as f:
-            data = yaml.safe_load(f)
+            data = yaml.load(f, Loader=_UniqueKeyLoader)
     except (OSError, yaml.YAMLError) as e:
         raise ConfigError(f"{path}: cannot read config: {e}") from e
     cfg = strict_from_dict(Config, data)

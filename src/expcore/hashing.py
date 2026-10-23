@@ -34,6 +34,13 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def _integral_as_int(v: Any) -> Any:
+    """Nullable int columns come back from parquet as float64; 2026.0 and 2026 must hash alike."""
+    if isinstance(v, (float, np.floating)) and float(v).is_integer():
+        return int(v)
+    return v
+
+
 def table_content_hash(df: pd.DataFrame, columns: Sequence[str], key: Sequence[str]) -> str:
     """Hash of table content, independent of row order and parquet bytes (D-07)."""
     columns = list(columns)
@@ -41,5 +48,5 @@ def table_content_hash(df: pd.DataFrame, columns: Sequence[str], key: Sequence[s
     rows = rows.where(rows.notna(), None)
     h = hashlib.sha256(canonical_json(columns).encode("utf-8"))
     for row in rows.itertuples(index=False, name=None):
-        h.update(b"\n" + canonical_json(list(row)).encode("utf-8"))
+        h.update(b"\n" + canonical_json([_integral_as_int(v) for v in row]).encode("utf-8"))
     return h.hexdigest()

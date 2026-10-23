@@ -1,9 +1,12 @@
 """Decision model (spec §5.4, §5.7, §6.1): outcome, score direction and thresholding."""
 
 import math
+import numbers
 from dataclasses import dataclass
 from enum import Enum
 from typing import Mapping
+
+import numpy as np
 
 from expcore.errors import DataValidationError
 from expcore.registry import Outcome, is_registered
@@ -15,7 +18,8 @@ class ScoreDirection(str, Enum):
 
 
 def _finite(x: object) -> bool:
-    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+    """Any real number (incl. numpy float32 from OpenCV/TF) except bool, and finite."""
+    return isinstance(x, numbers.Real) and not isinstance(x, (bool, np.bool_)) and math.isfinite(x)
 
 
 @dataclass(frozen=True)
@@ -31,7 +35,8 @@ class Decision:
         if not isinstance(self.outcome, Outcome) or not isinstance(self.score_direction, ScoreDirection):
             raise DataValidationError(f"INV-05: outcome/score_direction must be enum members: {self}")
         if self.outcome is Outcome.DECIDED:
-            if isinstance(self.y_pred, bool) or self.y_pred not in (0, 1):
+            if not isinstance(self.y_pred, numbers.Integral) or isinstance(self.y_pred, (bool, np.bool_)) \
+                    or self.y_pred not in (0, 1):
                 raise DataValidationError(f"INV-05: decided requires y_pred in {{0,1}}, got {self.y_pred!r}")
         elif self.y_pred is not None:
             raise DataValidationError(f"INV-05: {self.outcome.value} requires y_pred=null, got {self.y_pred!r}")
@@ -47,6 +52,12 @@ class Decision:
         bad = {k: v for k, v in self.components.items() if not _finite(v)}
         if bad:
             raise DataValidationError(f"INV-06: components must be finite: {bad}")
+        # Normalise numpy scalars to builtins so predictions columns get one dtype.
+        if self.y_pred is not None:
+            object.__setattr__(self, "y_pred", int(self.y_pred))
+        if self.score_raw is not None:
+            object.__setattr__(self, "score_raw", float(self.score_raw))
+        object.__setattr__(self, "components", {k: float(v) for k, v in self.components.items()})
 
 
 def unified_score(score_raw: float | None, direction: ScoreDirection) -> float | None:

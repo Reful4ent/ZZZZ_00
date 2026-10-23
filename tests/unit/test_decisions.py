@@ -85,3 +85,11 @@ def test_get_unregistered_algorithm():
     assert get_algorithm("photometric", "test_method") is marker
     with pytest.raises(ValueError):
         register_algorithm("photometric", "test_method", object())
+
+
+def test_numpy_scores_accepted_and_normalised():   # review: OpenCV/TF float32 output was rejected
+    import numpy as np
+    d = Decision(DECIDED, np.int64(1), np.float32(0.5), HIGHER_IS_MATCH, None, {"c": np.float32(2.0)})
+    assert type(d.score_raw) is float and type(d.components["c"]) is float and type(d.y_pred) is int
+    with pytest.raises(DataValidationError, match="INV-06"):
+        Decision(DECIDED, 1, np.float32("inf"), HIGHER_IS_MATCH, None, {})
