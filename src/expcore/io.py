@@ -4,7 +4,7 @@ import io
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Collection
 
 import numpy as np
 import pandas as pd
@@ -39,9 +39,13 @@ def load_json(path: Path) -> Any:
         return json.load(f)
 
 
-def write_parquet(df: pd.DataFrame, path: Path) -> None:
+def write_parquet(df: pd.DataFrame, path: Path, *, nullable: Collection[str] = ()) -> None:
+    """Inf is always rejected; NaN only in `nullable` columns, where pyarrow stores it as null."""
     for col in df.select_dtypes(include="floating").columns:
-        if not np.isfinite(df[col].to_numpy()).all():
+        values = df[col].to_numpy(dtype=float, na_value=np.nan)
+        if col in nullable:
+            values = values[~np.isnan(values)]
+        if not np.isfinite(values).all():
             raise DataValidationError(f"{path}: column {col!r} contains NaN/Inf")
     buf = io.BytesIO()
     df.to_parquet(buf, index=False)

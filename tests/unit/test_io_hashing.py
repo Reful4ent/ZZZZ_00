@@ -41,3 +41,12 @@ def test_atomic_write_failure_leaves_no_file(tmp_path, monkeypatch):
     monkeypatch.setattr(os, "replace", lambda *a: (_ for _ in ()).throw(OSError("boom")))
     with pytest.raises(OSError): atomic_write_bytes(tmp_path/"f", b"x")
     assert list(tmp_path.iterdir()) == []
+
+
+def test_parquet_nullable_float_columns(tmp_path):
+    df = pd.DataFrame({"s": [1.0, None], "t": [1.0, 2.0]})
+    with pytest.raises(DataValidationError): write_parquet(df, tmp_path/"p.parquet")
+    write_parquet(df, tmp_path/"p.parquet", nullable=("s",))
+    assert read_parquet(tmp_path/"p.parquet")["s"].isna().tolist() == [False, True]
+    with pytest.raises(DataValidationError):
+        write_parquet(pd.DataFrame({"s": [np.inf]}), tmp_path/"q.parquet", nullable=("s",))
