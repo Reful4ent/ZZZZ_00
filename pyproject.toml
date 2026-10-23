@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "expcore"
+version = "0.1.0"
+description = "Experimental complex: common protocol (expcore) and modules P1-P4"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "scipy",
+    "opencv-python",
+    "scikit-image",
+    "pandas",
+    "matplotlib",
+    "pyarrow",
+    "PyYAML",
+]
+
+[project.optional-dependencies]
+metric = ["tensorflow"]
+dev = ["pytest"]
+mem = ["psutil"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "unit: fast CPU-only tests",
+    "smoke: end-to-end run on fixtures",
+    "tf: requires TensorFlow (skipped with an explicit reason otherwise)",
+    "slow: slow tests",
+]
