@@ -43,3 +43,8 @@
 | D-28 | Программы: `photometric → p1`, `geometric → p2`, `metric → p3`; команды `metric` работают с `QueryInput`, их метрики в `aggregate` пусты с причиной `query_metrics_defined_by_tz_03` | Метрики P3 определяются ТЗ 03 |
 | D-29 | `input_mask_path` пока не передаётся алгоритму (загрузчик отклоняет колонку) | Путь может нести метку (D-05); нужен доступ к маске по непрозрачному id (ТЗ 02) |
 | D-30 | `select_threshold` получает только принятые решения с оценкой (колонка `outcome` обязательна); повторная запись того же порога — no-op, другого — `ResultTamperedError` | §5.7; resume и повторный `aggregate` не должны падать |
+| D-31 | Lock-файлы получены на Python 3.13.0, Windows AMD64 (`requirements.lock`; `requirements-metric.lock` — TensorFlow 2.21.0, Keras 3.15.1, ResNet50 проверен `PRIM-BACKBONE`); для Linux lock нужно получить той же проверочной установкой (`scripts/verify_lock.py`) | Версии берутся из прогона, а не предполагаются (§12.2); колёса и зависимости (например, `colorama`) зависят от платформы |
+
+## Приёмка (§11.3)
+
+2026-10-24, Windows AMD64, Python 3.13.0: п.1 — `unit`+`smoke` 271 passed / 2 skipped (tf) без TensorFlow, 272 passed / 1 skipped с TensorFlow; п.2 — `build-manifests`/`validate-data` на fixtures 0, на испорченных 3; п.3 — два smoke в свежих процессах дают одинаковые хэши `predictions` (T-REP-02); п.4 — оба lock-файла получены проверочной установкой и подтверждены `scripts/verify_lock.py` (код 0); п.5 — README содержит все команды §8, T-CLI-01 проходит; п.6 — отчёт на fixtures содержит матрицу 2×3, покрытие по классам, оговорки и результаты хуже базовых без фильтрации. Все шесть пунктов выполнены.
