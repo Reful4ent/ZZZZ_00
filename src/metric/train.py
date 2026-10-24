@@ -1,4 +1,4 @@
-"""Training run (spec 7.1-7.3, 7.6): seeds, init (M-D04), step loop, step log, epoch validation."""
+"""Training run (spec 7.1-7.6): seeds, init (M-D04), step loop, step log, epoch validation, resume."""
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -8,9 +8,11 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 
+from expcore.errors import ConfigError
 from expcore.io import dump_json, write_parquet
 from expcore.seeding import init_seeds, stream
-from metric.checkpoint import export_best, save_full, write_failure
+from metric.checkpoint import (export_best, load_progress, read_state, restore_full, save_full,
+                               write_failure)
 from metric.data import (apply_class_subset, apply_per_class_limit, build_proxy_index,
                          check_disjoint, sampler_exclusions, steps_per_epoch)
 from metric.errors import RunStop
@@ -102,9 +104,26 @@ def _write(df, path, schema=None, nullable=()):
     write_parquet(df, path, schema=schema, nullable=nullable)
 
 
-def run_training(ctx: TrainContext, resume_state: dict | None = None) -> dict:
-    if resume_state is not None:
-        raise NotImplementedError("resume: Task 4.3")
+def _prior(path: Path, col: str, upto: int) -> pd.DataFrame:
+    """Rows of an earlier attempt's table with `col < upto` (a later partial write is dropped)."""
+    df = pd.read_parquet(path) if path.exists() else pd.DataFrame({col: []})
+    return df[df[col] < upto]
+
+
+def run_training(ctx: TrainContext) -> dict:
+    return _run(ctx)
+
+
+def resume_training(ctx: TrainContext, checkpoint_dir: Path) -> dict:
+    """Continue from the full checkpoint at global_step + 1 (spec 7.5); ctx is the run's config."""
+    st = read_state(checkpoint_dir)
+    for k in ("config_hash", "manifest_hash", "weights_sha256"):
+        if st[k] != getattr(ctx, k):
+            raise ConfigError(f"resume: {k} {getattr(ctx, k)!r} != checkpoint {st[k]!r}")
+    return _run(ctx, Path(checkpoint_dir))
+
+
+def _run(ctx: TrainContext, ckpt: Path | None = None) -> dict:
     p, seed, run_dir = ctx.params, ctx.seed, Path(ctx.run_dir)
     run_id = run_dir.name
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -147,6 +166,21 @@ def run_training(ctx: TrainContext, resume_state: dict | None = None) -> dict:
     (run_dir / "queue_state").mkdir(exist_ok=True)
     batch_frames, epoch_batches, epoch_rows, queue_checks = [], [], [], []
     best, sampler, cur, epoch, gstep, losses = None, None, None, 0, -1, []
+    if ckpt is not None:  # batches are pure functions of (seed, step): only the state is restored
+        st = restore_full(ckpt, encoder, P, queues, optimizer)
+        gstep = st["global_step"]
+        if st["best_epoch"] is not None:
+            best = {"epoch": st["best_epoch"], "val_correct_at_1": st["best_correct_at_1"]}
+        logger.rows, prog = load_progress(ckpt)
+        losses = prog["losses"]
+    start = gstep + 1
+    epoch0, k0 = start // spe + 1, start % spe  # the unfinished epoch is replayed from its rows
+    epoch = epoch0  # a stop before the loop files seeded rows under this epoch
+    if ckpt is not None:
+        ep = _prior(run_dir / "epochs.parquet", "epoch", epoch0)
+        epoch_rows = ep.astype(object).where(ep.notna(), None).to_dict("records")
+        prev = _prior(run_dir / "batches.parquet", "global_step", start - k0)
+        batch_frames = [prev] if len(prev) else []
 
     def check(step):
         c = _check_drift(queues, tol, step)
@@ -167,10 +201,11 @@ def run_training(ctx: TrainContext, resume_state: dict | None = None) -> dict:
     try:
         sampler = BatchSampler(proxy_index, train, seed, b["classes"], b["per_class"],
                                inp["resize_short"], inp["crop"], inp["train_augment"])
-        data = iter(train_dataset(sampler, ctx.store, 0, epochs * spe, prefetch=2))
-        for epoch in range(1, epochs + 1):
-            t_epoch, losses, epoch_batches = time.perf_counter(), [], []
-            for k in range(spe):
+        epoch_batches = [sampler.to_frame(sampler.batch(s)) for s in range(start - k0, start)]
+        data = iter(train_dataset(sampler, ctx.store, start, epochs * spe - start, prefetch=2))
+        for epoch in range(epoch0, epochs + 1):
+            t_epoch = time.perf_counter()
+            for k in range(k0 if epoch == epoch0 else 0, spe):
                 t0 = time.perf_counter()
                 x, y, t = next(data)
                 t1 = time.perf_counter()

@@ -60,7 +60,11 @@ def restore_full(dir: Path, encoder, P, queues, optimizer) -> dict:
     """Restore all §7.4 state in place (optimizer must already be built); returns state.json."""
     d = _existing(dir)
     _checkpoint(encoder, P, queues, optimizer).read(str(d / "ckpt")).assert_consumed()
-    return load_json(d / "state.json")
+    return read_state(d)
+
+
+def read_state(dir: Path) -> dict:
+    return load_json(_existing(dir) / "state.json")
 
 
 def load_progress(dir: Path) -> tuple[list[dict], dict]:
