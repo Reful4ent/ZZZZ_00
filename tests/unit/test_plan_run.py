@@ -93,3 +93,60 @@ def test_module_profile_must_match(tmp_path, monkeypatch):
     from tests.conftest import write_cfg
     write_cfg(world.exp_dict, world.exp_path)
     assert main(world.exp_argv("plan")) == 2
+
+
+def test_refused_replan_leaves_frozen_plan_intact(tmp_path, monkeypatch):   # review P6-I1
+    from expcore.hashing import sha256_file
+    world = make_world(tmp_path, monkeypatch, profile="confirmatory")
+    assert main(world.exp_argv("plan")) == 0
+    pdir = _plan_dir(world, "confirmatory")
+    files = {p.name: sha256_file(p) for p in (pdir / "configs").iterdir()}
+    open_test(world.registry_path, pdir, "1", load_json(pdir / "plan.json")["runs"][0]["run_id"])
+    world.cfg_dict["runner"]["chunk_size"] = 7
+    world.write()
+    assert main(world.exp_argv("plan")) == 5
+    assert {p.name: sha256_file(p) for p in (pdir / "configs").iterdir()} == files
+
+
+def test_same_named_configs_do_not_collide(tmp_path, monkeypatch):   # review P6-I2
+    from tests.conftest import write_cfg
+    world = make_world(tmp_path, monkeypatch, profile="pilot",
+                       runs=[{"module": "photometric", "command": "run", "config": "a/cfg.yaml"},
+                             {"module": "photometric", "command": "run", "config": "b/cfg.yaml"}])
+    (tmp_path / "a").mkdir(); (tmp_path / "b").mkdir()
+    write_cfg(world.cfg_dict, tmp_path / "a" / "cfg.yaml")
+    write_cfg({**world.cfg_dict, "algorithms": {"other": "1"}}, tmp_path / "b" / "cfg.yaml")
+    assert main(world.exp_argv("plan")) == 0
+    runs = load_json(_plan_dir(world, "pilot") / "plan.json")["runs"]
+    assert len({r["config_path"] for r in runs}) == len(runs) == 6
+
+
+def test_duplicate_run_ids_rejected(tmp_path, monkeypatch):   # review P6-I2/I3: D-08 run_id has no command
+    world = make_world(tmp_path, monkeypatch, profile="pilot",
+                       runs=[{"module": "metric", "command": "train", "config": "cfg.yaml"},
+                             {"module": "metric", "command": "embed", "config": "cfg.yaml"}])
+    assert main(world.exp_argv("plan")) == 2
+
+
+def test_planned_configs_take_plan_paths(tmp_path, monkeypatch):   # review P6-I4
+    world = make_world(tmp_path, monkeypatch, profile="pilot")
+    world.cfg_dict["paths"]["out_root"] = str(tmp_path / "elsewhere")
+    from tests.conftest import write_cfg
+    write_cfg(world.cfg_dict, world.cfg_path)
+    assert main(world.exp_argv("plan")) == 0
+    pdir = _plan_dir(world, "pilot")
+    for r in load_json(pdir / "plan.json")["runs"]:
+        assert load_config(pdir / r["config_path"], module="photometric").paths.out_root == world.out_root
+
+
+def test_path_overrides_reach_aggregate_and_report(tmp_path, monkeypatch):   # review P6-I4
+    world = make_world(tmp_path, monkeypatch, profile="pilot")
+    monkeypatch.setitem(registry._ALGORITHMS, ("photometric", "fake"), RandomScorePredictor())
+    alt = ["--out-root", str(tmp_path / "alt out с пробелом")]
+    for cmd in ("plan", "run", "aggregate", "report"):
+        assert main([*world.exp_argv(cmd), *alt]) == 0, cmd
+    import pandas as pd
+    metrics = pd.read_parquet(tmp_path / "alt out с пробелом" / "pilot" / "aggregate" / "1" / "metrics.parquet")
+    assert metrics.run_id.nunique() == 3
+    report = (tmp_path / "alt out с пробелом" / "pilot" / "report" / "1" / "report.md").read_text(encoding="utf-8")
+    assert "not started" not in report

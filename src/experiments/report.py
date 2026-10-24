@@ -17,6 +17,7 @@ METRIC_LABELS = [
     ("correct_cond", "Correct_cond (conditional)"),
 ]
 SEED_SPREAD = ["recall_all", "fpr_all", "correct_all", "coverage"]
+POST_TEST_LABEL = "Отдельное исследование (post-test)"
 
 
 def _missing(v) -> bool:
@@ -50,6 +51,9 @@ def _run_block(row: pd.Series) -> list[str]:
              f"Положительный класс: {row.positive_class} (y_match = 1); преобразование оценки: "
              f"{row.score_transform}. При смене класса (y_defect = 1 − y_match) score_defect = −score_match, "
              "отказы остаются отказами.", ""]
+    if row.post_test_study:
+        lines += [f"**{POST_TEST_LABEL}:** версия протокола получена после открытия test у родительской версии (§7.5).",
+                  ""]
     if all(_missing(row[k]) for k, _ in METRIC_LABELS):
         reason = next(iter(reasons.values()), "undefined")
         return lines + [f"Метрики этого запуска не вычисляются ({reason}).", ""]
@@ -94,6 +98,9 @@ def render_report(metrics: pd.DataFrame, plan: Sequence[PlannedRun], completenes
     lines += [f"| `{r.run_id}` | {r.module} | {r.command} | {r.seed} | {statuses.get(r.run_id, 'not started')} |"
               for r in plan]
     main, oracle = rows[rows["section"] == "main"], rows[rows["section"] == "oracle"]
+    if metrics["post_test_study"].any():
+        lines += ["", f"> {POST_TEST_LABEL}: часть результатов — отдельное исследование после открытия test "
+                  "и в подтверждающие выводы не входит."]
     lines += ["", "## Результаты", "", "Показатели `*_all` — основные; `*_cond` — условные (только по принятым "
               "решениям) и не заменяют `*_all`.", ""]
     lines += _section(main)

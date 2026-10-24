@@ -25,7 +25,7 @@ _RATIOS = [f.name for f in dataclasses.fields(MetricsRow) if f.name not in _COUN
            and f.name not in ("positive_class", "null_reasons")]
 METRICS_SCHEMA = {
     "run_id": "str", "module": "str", "method_id": "str", "relation_id": "str", "split": "str", "seed": "int64",
-    "profile": "str", "section": "str", "oracle_mode": "bool", "positive_class": "str", "score_transform": "str",
+    "profile": "str", "section": "str", "oracle_mode": "bool", "post_test_study": "bool", "positive_class": "str", "score_transform": "str",
     "n_pairs": "int64", "n_source_groups": "int64", "n_seeds": "int64",
     **dict.fromkeys(_COUNTS, "int64"), **dict.fromkeys(_RATIOS, "float64"), "null_reasons": "str",
 }
@@ -77,7 +77,8 @@ def aggregate(plan_dir: Path, out_path: Path) -> pd.DataFrame:
         pairs = pairs[pairs["split"].isin(splits)]
         pred = read_predictions(run_dir)
         base = {"run_id": r.run_id, "module": r.module, "seed": r.seed, "profile": profile,
-                "section": "oracle" if run["oracle_mode"] else "main", "oracle_mode": run["oracle_mode"]}
+                "section": "oracle" if run["oracle_mode"] else "main", "oracle_mode": run["oracle_mode"],
+                "post_test_study": run["post_test_study"]}
         if r.module == "metric":   # query-level predictions: completeness only, metrics come with TZ 03
             validate_predictions(pred, pd.DataFrame({"query_id": sorted(set(pairs["query_id"]))}),
                                  require_complete=True)

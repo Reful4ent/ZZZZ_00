@@ -58,8 +58,7 @@ def _validate_data(args: argparse.Namespace) -> None:
 def _plan(args: argparse.Namespace) -> None:
     cfg = _config(args)
     out = plan_dir(cfg.paths.out_root, cfg.profile, cfg.protocol_version)
-    runs = make_plan(cfg, Path(args.config).parent, out)
-    write_plan(out, runs, cfg, registry_path=args.protocol_registry)
+    runs = write_plan(out, make_plan(cfg, Path(args.config).parent), cfg, registry_path=args.protocol_registry)
     print(f"{len(runs)} runs planned in {out}")
 
 
@@ -81,7 +80,7 @@ def _aggregate(args: argparse.Namespace) -> None:
     cfg = _config(args)
     out = _stage_path(cfg, "aggregate", "metrics.parquet")
     df = aggregate(plan_dir(cfg.paths.out_root, cfg.profile, cfg.protocol_version), out)
-    print(f"{df['run_id'].nunique()} completed runs, {len(df)} metric rows → {out}")
+    print(f"{df['run_id'].nunique()} completed runs, {len(df)} metric rows -> {out}")
 
 
 def _report(args: argparse.Namespace) -> None:
@@ -91,13 +90,16 @@ def _report(args: argparse.Namespace) -> None:
         raise DataValidationError(f"{metrics_path} is missing: run `experiments aggregate` first")
     pdir = plan_dir(cfg.paths.out_root, cfg.profile, cfg.protocol_version)
     manifest = load_manifest(cfg.paths.manifest_dir, manifest_version(cfg))
-    reports = load_json(manifest.dir / "completeness_report.json")
-    completeness = {"runs": run_statuses(pdir), "datasets": {d: reports.get(d) for d in sorted(cfg.datasets)}}
+    # completeness from datasets.json, which the D-07 manifest hash covers (completeness_report.json is not)
+    datasets = {rec["dataset_id"]: rec for rec in manifest.datasets}
+    completeness = {"runs": run_statuses(pdir), "datasets": {
+        d: ({"status": datasets[d]["completeness"], "subset_name": datasets[d].get("subset_name")}
+            if datasets.get(d, {}).get("completeness") else None) for d in sorted(cfg.datasets)}}
     text = render_report(read_parquet(metrics_path), load_plan(pdir), completeness)
     out = _stage_path(cfg, "report", "report.md")
     out.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_bytes(out, text.encode("utf-8"))
-    print(f"report → {out}")
+    print(f"report -> {out}")
 
 
 HANDLERS: dict[str, Callable[[argparse.Namespace], int | None]] = {

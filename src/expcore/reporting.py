@@ -13,4 +13,6 @@ def dataset_display_name(dataset_id: str, completeness: dict | None) -> str:
     name = DATASET_NAMES.get(dataset_id, dataset_id)
     if completeness and completeness.get("status") == "subset":
         return f"{name}, поднабор `{completeness.get('subset_name')}`"
+    if completeness and completeness.get("status") == "unverified":   # §4.3: the report must say so
+        return f"{name} (полнота не подтверждена)"
     return name

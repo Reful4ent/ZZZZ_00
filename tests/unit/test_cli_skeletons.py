@@ -144,3 +144,20 @@ def test_pilot_runs_without_test_splits(tmp_path, monkeypatch):
     splits = set(read_predictions(_run_dir(world, "photometric", "pilot")).pair_id.str.split(":").str[2])
     assert splits == {"train", "validation"}
     assert not (world.out_root / "confirmatory").exists()
+
+
+def test_completed_run_of_another_command_refused(tmp_path, monkeypatch):   # review P6-I3
+    from tests.fakes import BatchQueryPredictor
+    world = make_world(tmp_path, monkeypatch)
+    monkeypatch.setitem(registry._ALGORITHMS, ("metric", "fake"), BatchQueryPredictor())
+    assert _main("metric")(world.argv("train")) == 0
+    assert _main("metric")(world.argv("embed")) == 5   # same run_id (D-08 has no command): not silently skipped
+
+
+def test_non_utf8_stdout_does_not_crash(monkeypatch):   # review P6-I5: cp1251 console, redirected output
+    import argparse
+    import io
+    from expcore.cli_common import run_cli
+    out = io.TextIOWrapper(io.BytesIO(), encoding="cp1251")
+    monkeypatch.setattr(sys, "stdout", out)
+    assert run_cli(lambda a: print("12 rows → out/метрики ✓"), [], parser=argparse.ArgumentParser()) == 0

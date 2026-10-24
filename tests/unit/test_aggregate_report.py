@@ -148,3 +148,22 @@ def test_report_states_positive_class(shared):
     world = shared
     text = render_report(_metrics(world), load_plan(world.plan_dir), _completeness(world))
     assert "Положительный класс: match (y_match = 1)" in text and "identity" in text
+
+
+def test_post_test_study_labelled(world):   # review P6-I6
+    run = load_plan(world.plan_dir)[0]
+    path = world.out_root / "pilot" / "photometric" / run.run_id / "run.json"
+    doc = load_json(path); doc["post_test_study"] = True
+    dump_json(doc, path)
+    m = _metrics(world)
+    assert set(m[m.run_id == run.run_id].post_test_study) == {True} and not m[m.run_id != run.run_id].post_test_study.any()
+    text = render_report(m, load_plan(world.plan_dir), _completeness(world))
+    assert "отдельное исследование" in text
+
+
+def test_unverified_hpatches_named(shared):   # review P6-I7
+    world = shared
+    assert dataset_display_name("hpatches", {"status": "unverified"}) == "HPatches (полнота не подтверждена)"
+    comp = _completeness(world)
+    comp["datasets"]["hpatches"] = {"status": "unverified", "subset_name": None}
+    assert "HPatches (полнота не подтверждена)" in render_report(_metrics(world), load_plan(world.plan_dir), comp)

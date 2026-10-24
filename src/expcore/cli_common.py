@@ -10,6 +10,7 @@ import cv2
 from expcore.config import config_hash, load_config
 from expcore.errors import ConfigError, DataValidationError, NotImplementedAlgorithm, ProtocolError, \
     ProtocolViolationError
+from expcore.io import load_json
 from expcore.loaders import ImageStore, QueryInput, SplitGuard, TEST_SPLITS, accessible_splits, load_pair_inputs
 from expcore.manifests import load_manifest, manifest_version
 from expcore.protocol import check_run_in_plan, is_post_test, open_test
@@ -52,6 +53,9 @@ def run_cli(main: Callable[[argparse.Namespace], int | None], argv: Sequence[str
 
     A handler may return an int (e.g. the largest code of the runs it launched); None means 0.
     """
+    for stream in (sys.stdout, sys.stderr):   # a cp1251 console or redirected output must not crash a run
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="backslashreplace")
     try:
         args = parser.parse_args(argv)
     except SystemExit as e:   # --help (0) or bad arguments (2)
@@ -103,6 +107,10 @@ def execute_run(module: str, command: str, args: argparse.Namespace, *, query: b
     init_seeds(seed)
     cv2.setNumThreads(cfg.determinism.opencv_threads)
     run_dir = cfg.paths.out_root / cfg.profile / module / run_id
+    previous = run_dir / "run.json"
+    if previous.exists() and load_json(previous)["command"] != command:   # D-08 run_id carries no command
+        raise ProtocolViolationError(f"{run_dir} belongs to `{module} {load_json(previous)['command']}`; "
+                                     f"`{command}` needs its own config")
     commit, dirty = git_state(Path.cwd())
     record = RunRecord(
         run_dir, run_id=run_id, config_hash=h, dataset_manifest_hash=manifest.manifest_hash, seed=seed,
