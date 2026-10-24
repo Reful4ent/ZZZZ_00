@@ -32,13 +32,13 @@ def _setup():
 
 def test_npz_roundtrip(tmp_path):
     es = EmbeddingSet(np.random.rand(3, 4).astype(np.float32), np.array(["b", "a", "c"]),
-                      "w" * 64, "validation", "none", "fake", "m1")
+                      "w" * 64, "validation", "none", "fake", "m1", "pk")
     save_embeddings(tmp_path / "e.npz", es)
     r = load_embeddings(tmp_path / "e.npz")
     np.testing.assert_array_equal(r.embeddings, es.embeddings)
     assert list(r.image_ids) == ["b", "a", "c"]
-    assert (r.weights_hash, r.split, r.degradation_id, r.method_id, r.manifest_hash) == \
-        ("w" * 64, "validation", "none", "fake", "m1")
+    assert (r.weights_hash, r.split, r.degradation_id, r.method_id, r.manifest_hash, r.preprocess_key) == \
+        ("w" * 64, "validation", "none", "fake", "m1", "pk")
 
 
 def test_cache_hit_and_invalidate(tmp_path):
@@ -79,3 +79,25 @@ def test_nonfinite_raises(tmp_path):
         embed_split(m, images, "validation", store, p, "none", 0, tmp_path, "mh")
     assert e.value.failure_type == "INVALID_EMBEDDING_NORM"
     assert not list(tmp_path.glob("*.npz"))
+
+
+def test_preprocess_key_in_cache(tmp_path):
+    images, store, p = _setup()
+    m = CountingMethod()
+    run = lambda deg, seed, pp=p: embed_split(m, images, "validation", store, pp, deg, seed, tmp_path, "mh")
+    run("none", 0)
+    n = m.calls
+    p2 = {**p, "input": {**p["input"], "crop": p["input"]["crop"] - 8}}
+    run("none", 0, p2)
+    assert m.calls > n
+    for deg in ("none", "bright_+0.1"):
+        run(deg, 0)
+        n = m.calls
+        run(deg, 1)
+        assert m.calls == n  # seed irrelevant
+    run("noise_0.03", 0)
+    n = m.calls
+    run("noise_0.03", 0)
+    assert m.calls == n
+    run("noise_0.03", 1)
+    assert m.calls > n
