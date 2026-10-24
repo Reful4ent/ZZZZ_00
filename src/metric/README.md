@@ -34,7 +34,7 @@ TensorFlow подключается только внутри обработчи
    materialize("e5_limited", Path("configs/metric"), selected=sel, n_cohort_images=N)  # N_cohort_all, классы с >=4 изображениями
    ```
    Запись: `<exp_id>.yaml` (конфиг `experiments`) и `cells/<exp_id>/*.yaml`.
-6. `python -m experiments plan` для confirmatory (план фиксируется по правилам ТЗ 00, §7.5), затем `run` для E2–E7. `aggregate`/`report` над запусками P3 — работа P4.
+6. `python -m experiments plan` для confirmatory пишет `plan.lock.json` (ТЗ 00, §7.5; test открывается только запусками из него), затем `run` для E2–E7. `aggregate`/`report` над запусками P3 — работа P4.
 
 ## Каталог запуска
 
