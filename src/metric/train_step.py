@@ -16,7 +16,11 @@ class StepConfig:
 
 
 def make_proxy_step(encoder, P, queues, optimizer, cfg: StepConfig):
-    @tf.function(jit_compile=False)
+    optimizer.build(encoder.trainable_variables + [P])  # avoid a second trace on first apply
+    @tf.function(jit_compile=False, input_signature=[
+        tf.TensorSpec([None, None, None, 3], tf.float32),
+        tf.TensorSpec([None], tf.int32),
+        tf.TensorSpec([], tf.int64)])
     def step(x, labels, step_idx):
         labels = tf.cast(labels, tf.int32)
         with tf.GradientTape() as tape:
@@ -24,7 +28,8 @@ def make_proxy_step(encoder, P, queues, optimizer, cfg: StepConfig):
             z = l2_normalize_checked(h, cfg.eps_z, "INVALID_EMBEDDING_NORM")
             L_base = base_loss(proxy_logits(z, P, cfg.kappa, cfg.eps_p), labels)  # checks P
             if queues is not None:
-                queues.push(tf.stop_gradient(z), labels, step_idx)
+                with tf.control_dependencies([L_base]):  # L_base carries both norm asserts
+                    queues.push(tf.stop_gradient(z), labels, step_idx)
                 mu, n = queues.centers()
                 L_dev, n_val = dev_loss(P, mu, n, cfg.n_warm)
             else:

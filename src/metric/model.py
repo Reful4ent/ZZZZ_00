@@ -41,8 +41,9 @@ def weights_file_sha256():
 
 def weights_hash(model, extra: str) -> str:
     h = hashlib.sha256()
-    for v in sorted(model.variables, key=lambda v: v.path):
-        h.update(v.path.encode())
-        h.update(np.ascontiguousarray(v.numpy()).tobytes())
+    for v in model.variables:  # architecture order; names are auto-generated, so not hashed
+        a = np.ascontiguousarray(v.numpy())
+        h.update(f"{a.shape}{a.dtype}".encode())
+        h.update(a.tobytes())
     h.update(extra.encode())
     return h.hexdigest()

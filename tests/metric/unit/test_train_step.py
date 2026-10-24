@@ -104,17 +104,45 @@ def test_p_not_projected(tf_or_skip):
     assert np.abs(np.linalg.norm(P.numpy(), axis=1) - 1).max() > 1e-4
 
 
+def _state(enc, P, q, opt):
+    qs = [q.buf, q.n, q.start, q.S, q.ins_step]
+    return [v.numpy().copy() for v in list(enc.variables) + [P] + qs] + [int(opt.iterations)]
+
+
+def _assert_blocked(tf, setup, bad, msg):
+    enc, P, q, opt, cfg, step = setup
+    bad(enc, P)
+    snap = _state(enc, P, q, opt)
+    x, y = _batch()
+    with pytest.raises(tf.errors.InvalidArgumentError, match=msg):
+        step(x, y, 0)
+    for a, b in zip(snap, _state(enc, P, q, opt)):
+        np.testing.assert_array_equal(a, b)
+
+
 def test_invalid_norm_blocks_update(tf_or_skip):
     tf = tf_or_skip
+    _assert_blocked(tf, _setup(), lambda enc, P: enc.dense.kernel.assign(
+        tf.zeros_like(enc.dense.kernel)), "INVALID_EMBEDDING_NORM")
+
+
+def test_invalid_proxy_norm_blocks_update(tf_or_skip):
+    tf = tf_or_skip
+
+    def bad(enc, P):
+        v = P.numpy()
+        v[2] = 0.0
+        P.assign(v)
+
+    _assert_blocked(tf, _setup(), bad, "INVALID_PROXY_NORM")
+
+
+def test_no_retrace_across_steps(tf_or_skip):
     enc, P, q, opt, cfg, step = _setup()
-    enc.dense.kernel.assign(tf.zeros_like(enc.dense.kernel))
-    snap = [v.numpy().copy() for v in enc.variables] + [P.numpy().copy()]
     x, y = _batch()
-    with pytest.raises(tf.errors.InvalidArgumentError, match="INVALID_EMBEDDING_NORM"):
-        step(x, y, 0)
-    assert int(opt.iterations) == 0
-    for a, b in zip(snap, [v.numpy() for v in enc.variables] + [P.numpy()]):
-        np.testing.assert_array_equal(a, b)
+    for i in range(3):
+        step(x, y, i)
+    assert step.experimental_get_tracing_count() == 1
 
 
 def test_queue_uses_theta_t(tf_or_skip):

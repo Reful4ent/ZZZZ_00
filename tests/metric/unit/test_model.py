@@ -60,3 +60,12 @@ def test_weights_hash_and_file_sha(tf_or_skip):
     assert weights_hash(enc, "x") != h
     s = weights_file_sha256()
     assert s is None or len(s) == 64
+
+
+def test_weights_hash_name_independent(tf_or_skip):
+    from metric.model import weights_hash
+    a, b = _enc(8), _enc(8)  # b gets suffixed layer names
+    b.set_weights(a.get_weights())  # backbone init is unseeded; make weights bit-identical
+    assert weights_hash(a, "x") == weights_hash(b, "x")
+    b.dense.kernel.assign(b.dense.kernel + 1.0)
+    assert weights_hash(a, "x") != weights_hash(b, "x")
