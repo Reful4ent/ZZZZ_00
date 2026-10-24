@@ -74,6 +74,21 @@ class SplitGuard:
             raise TestAccessError(f"split {split!r} is not accessible in profile {self._profile}")
 
 
+def accessible_splits(profile: str, *, fixture: bool, splits) -> list[str]:
+    """Splits a run of this profile covers; confirmatory covers all (test is opened through protocol, §7.5)."""
+    if profile == "confirmatory":
+        return sorted(splits)
+    guard = SplitGuard(profile, fixture=fixture)
+    out = []
+    for split in sorted(splits):
+        try:
+            guard.check(split)
+            out.append(split)
+        except TestAccessError:
+            pass
+    return out
+
+
 class ImageStore:
     def __init__(self, data_root: Path, images: pd.DataFrame, guard: SplitGuard) -> None:
         self._root = Path(data_root)

@@ -11,8 +11,11 @@ import yaml
 from expcore.cli_common import add_common_args, path_overrides, plan_dir, run_cli
 from expcore.config import Config, load_config, register_params_schema
 from expcore.errors import ConfigError, DataValidationError
-from expcore.manifests import build_manifests
-from experiments.plan import PlanEntry, make_plan, run_plan, write_plan
+from expcore.io import atomic_write_bytes, load_json, read_parquet
+from expcore.manifests import build_manifests, load_manifest, manifest_version
+from experiments.aggregate import aggregate, run_statuses
+from experiments.plan import PlanEntry, load_plan, make_plan, run_plan, write_plan
+from experiments.report import render_report
 from experiments.validate import report_path, validate_data
 
 MODULE = "experiments"
@@ -70,11 +73,40 @@ def _run(args: argparse.Namespace) -> int:
     return run_plan(plan_dir(cfg.paths.out_root, cfg.profile, cfg.protocol_version), extra)
 
 
+def _stage_path(cfg: Config, stage: str, name: str) -> Path:
+    return cfg.paths.out_root / cfg.profile / stage / cfg.protocol_version / name
+
+
+def _aggregate(args: argparse.Namespace) -> None:
+    cfg = _config(args)
+    out = _stage_path(cfg, "aggregate", "metrics.parquet")
+    df = aggregate(plan_dir(cfg.paths.out_root, cfg.profile, cfg.protocol_version), out)
+    print(f"{df['run_id'].nunique()} completed runs, {len(df)} metric rows → {out}")
+
+
+def _report(args: argparse.Namespace) -> None:
+    cfg = _config(args)
+    metrics_path = _stage_path(cfg, "aggregate", "metrics.parquet")
+    if not metrics_path.is_file():
+        raise DataValidationError(f"{metrics_path} is missing: run `experiments aggregate` first")
+    pdir = plan_dir(cfg.paths.out_root, cfg.profile, cfg.protocol_version)
+    manifest = load_manifest(cfg.paths.manifest_dir, manifest_version(cfg))
+    reports = load_json(manifest.dir / "completeness_report.json")
+    completeness = {"runs": run_statuses(pdir), "datasets": {d: reports.get(d) for d in sorted(cfg.datasets)}}
+    text = render_report(read_parquet(metrics_path), load_plan(pdir), completeness)
+    out = _stage_path(cfg, "report", "report.md")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_bytes(out, text.encode("utf-8"))
+    print(f"report → {out}")
+
+
 HANDLERS: dict[str, Callable[[argparse.Namespace], int | None]] = {
     "build-manifests": _build_manifests,
     "validate-data": _validate_data,
     "plan": _plan,
     "run": _run,
+    "aggregate": _aggregate,
+    "report": _report,
 }
 
 

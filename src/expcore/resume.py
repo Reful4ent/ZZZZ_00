@@ -77,6 +77,19 @@ def read_predictions(run_dir: Path) -> pd.DataFrame:
     return pd.concat([read_parquet(p) for p in parts], ignore_index=True)
 
 
+def verify_shards(run_dir: Path, progress: dict | None = None) -> None:
+    """Every unit recorded in progress.json must still have its shard with the recorded SHA-256."""
+    run_dir = Path(run_dir)
+    if progress is None:
+        path = run_dir / "progress.json"
+        progress = load_json(path) if path.exists() else {"units": {}}
+    for unit, entry in progress["units"].items():
+        shard = run_dir / "predictions" / f"part-{int(unit):06d}.parquet"
+        if not shard.is_file() or sha256_file(shard) != entry["sha256"]:
+            raise ResultTamperedError(f"{shard}: completed shard is missing or its SHA-256 changed; "
+                                      "completed results are never recomputed — remove the run directory")
+
+
 def predictions_content_hash(df: pd.DataFrame) -> str:
     """Content hash for T-REP-02; elapsed_ms is a measurement, not a result, and is left out."""
     comps = sorted(c for c in df.columns if str(c).startswith(COMPONENT_PREFIX))
@@ -104,11 +117,7 @@ class Runner:
         return load_json(path) if path.exists() else {"units": {}}
 
     def _verify_done(self, progress: dict) -> None:
-        for unit, entry in progress["units"].items():
-            shard = self.pred_dir / f"part-{int(unit):06d}.parquet"
-            if not shard.is_file() or sha256_file(shard) != entry["sha256"]:
-                raise ResultTamperedError(f"{shard}: completed shard is missing or its SHA-256 changed; "
-                                          "completed results are never recomputed — remove the run directory")
+        verify_shards(self.ctx.run_dir, progress)
 
     def _write_once(self, name: str, content: Any) -> None:
         """Write a run-level artifact on the first attempt; a resume must see the same content."""

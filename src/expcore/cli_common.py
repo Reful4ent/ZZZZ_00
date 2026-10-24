@@ -10,7 +10,7 @@ import cv2
 from expcore.config import config_hash, load_config
 from expcore.errors import ConfigError, DataValidationError, NotImplementedAlgorithm, ProtocolError, \
     ProtocolViolationError
-from expcore.loaders import ImageStore, QueryInput, SplitGuard, TEST_SPLITS, load_pair_inputs
+from expcore.loaders import ImageStore, QueryInput, SplitGuard, TEST_SPLITS, accessible_splits, load_pair_inputs
 from expcore.manifests import load_manifest, manifest_version
 from expcore.protocol import check_run_in_plan, is_post_test, open_test
 from expcore.registry import get_algorithm
@@ -89,7 +89,8 @@ def execute_run(module: str, command: str, args: argparse.Namespace, *, query: b
         raise ConfigError("seeds.seed: a single run needs a seed")
     version = manifest_version(cfg)
     manifest = load_manifest(cfg.paths.manifest_dir, version)
-    guard = SplitGuard(cfg.profile, fixture=all(ds.fixture for ds in cfg.datasets.values()))
+    fixture = all(ds.fixture for ds in cfg.datasets.values())
+    guard = SplitGuard(cfg.profile, fixture=fixture)
     h = config_hash(cfg)
     run_id = make_run_id(module, cfg.profile, h, seed)
     plan = plan_dir(cfg.paths.out_root, cfg.profile, cfg.protocol_version)
@@ -125,13 +126,10 @@ def execute_run(module: str, command: str, args: argparse.Namespace, *, query: b
     pairs = manifest.pairs.get(program)
     if pairs is None:
         raise DataValidationError(f"manifest {version!r} has no {program}/pairs.parquet (no pair builder registered)")
-    splits = sorted(set(pairs["split"]))
-    if cfg.profile == "confirmatory":
-        if TEST_SPLITS & set(splits):   # §7.5: record the opening before any test image is loaded
-            open_test(registry_path, plan, cfg.protocol_version, run_id)
-            guard.allow_test()
-    else:
-        splits = [s for s in splits if _allowed(guard, s)]
+    splits = accessible_splits(cfg.profile, fixture=fixture, splits=set(pairs["split"]))
+    if cfg.profile == "confirmatory" and TEST_SPLITS & set(splits):
+        open_test(registry_path, plan, cfg.protocol_version, run_id)   # §7.5: before any test image is loaded
+        guard.allow_test()
     pairs = pairs[pairs["split"].isin(splits)]
     if query:
         items = [QueryInput(q, {}) for q in sorted(set(pairs["query_id"]))]
@@ -139,11 +137,3 @@ def execute_run(module: str, command: str, args: argparse.Namespace, *, query: b
         items = [p for s in splits for p in load_pair_inputs(pairs, cfg.inputs.pair_columns, s, guard)]
     ctx = RunContext(run_id=run_id, seed=seed, profile=cfg.profile, run_dir=run_dir, cfg=cfg, record=record)
     Runner(ctx, predictor, ImageStore(cfg.paths.data_root, manifest.images, guard)).run(items, method_id=method_id)
-
-
-def _allowed(guard: SplitGuard, split: str) -> bool:
-    try:
-        guard.check(split)
-        return True
-    except ProtocolViolationError:
-        return False
