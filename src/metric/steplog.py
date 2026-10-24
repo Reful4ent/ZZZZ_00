@@ -16,7 +16,8 @@ STEP_SCHEMA = {
     "mean_age_steps": "float64", "step_time_ms": "float64", "data_time_ms": "float64",
 }
 STEP_COLUMNS = list(STEP_SCHEMA)
-_NULLABLE = ("n_c_mean", "mu_norm_min", "mu_norm_mean", "mu_norm_max", "mean_age_steps")
+_NULLABLE = ("n_c_mean", "p_norm_min", "p_norm_mean", "p_norm_max", "mu_norm_min", "mu_norm_mean",
+             "mu_norm_max", "mean_age_steps")
 QUEUE_SCHEMA = {"proxy_idx": "int64", "n_c": "int64", "mean_age": "float64",
                 "mu_norm": "float64", "p_norm": "float64"}
 
@@ -29,8 +30,8 @@ def _mmm(prefix, a):
 
 
 def step_stats(p, n=None, mu=None, K=None, mean_age=None) -> dict:
-    """Queue/proxy statistics of one log row; queue fields are null when n is None."""
-    row = _mmm("p_norm", np.linalg.norm(np.asarray(p, np.float64), axis=1))
+    """Queue/proxy statistics of one log row; queue (proxy) fields are null when n (p) is None."""
+    row = _mmm("p_norm", None if p is None else np.linalg.norm(np.asarray(p, np.float64), axis=1))
     if n is None:
         row.update(n_c_min=None, n_c_mean=None, n_c_max=None, n_classes_empty=None,
                    n_classes_full=None, mean_age_steps=None, **_mmm("mu_norm", None))

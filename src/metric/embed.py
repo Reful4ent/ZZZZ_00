@@ -42,6 +42,7 @@ def load_embeddings(path: Path) -> EmbeddingSet:
 
 
 def embed_split(method, images, split, store, params, degradation_id, seed, cache_dir, manifest_hash):
+    """`method`: an embedder (metric.methods.make_embedder): embed_images, method_id, weights_hash."""
     wh = method.weights_hash()
     inp = params["input"]
     pk = json.dumps({"resize_short": int(inp["resize_short"]), "crop": int(inp["crop"]),
@@ -56,9 +57,10 @@ def embed_split(method, images, split, store, params, degradation_id, seed, cach
         except Exception:  # corrupt/foreign file: recompute and overwrite
             pass
     ids = sorted(images.loc[images["split"] == split, "image_id"])
-    chunks = [np.asarray(method.embed_for_search(x), dtype=np.float32)
+    raw = getattr(method, "needs_raw_pixels", False)  # rgb_hist bins raw [0,255] RGB
+    chunks = [np.asarray(method.embed_images(x), dtype=np.float32)
               for _, x in eval_arrays(ids, store, inp["resize_short"], inp["crop"], EVAL_BATCH,
-                                      degradation_id, seed)]
+                                      degradation_id, seed, raw)]
     z = np.concatenate(chunks) if chunks else np.zeros((0, 0), np.float32)
     if not np.isfinite(z).all():
         raise RunStop("INVALID_EMBEDDING_NORM", {"split": split, "degradation_id": degradation_id})

@@ -13,10 +13,15 @@ STATE_KEYS = ("epoch", "global_step", "seed", "sampler_version", "best_epoch",
               "best_correct_at_1", "config_hash", "manifest_hash", "weights_sha256")
 
 
-def _checkpoint(encoder, P, queues, optimizer) -> tf.train.Checkpoint:
-    objs = {"encoder": encoder, "P": P, "optimizer": optimizer}
+def _checkpoint(encoder, P, queues, optimizer, head=()) -> tf.train.Checkpoint:
+    """P: proxies or None; head: a method's other extra variables (e.g. classifier kernel/bias)."""
+    objs = {"encoder": encoder, "optimizer": optimizer}
+    if P is not None:
+        objs["P"] = P
     if queues is not None:
         objs["queues"] = queues
+    if head:
+        objs["head"] = list(head)
     return tf.train.Checkpoint(**objs)
 
 
@@ -32,7 +37,7 @@ def _existing(d: Path) -> Path:
 
 
 def save_full(dir: Path, encoder, P, queues, optimizer, state: dict, steps: list = (),
-              progress: dict | None = None) -> None:
+              progress: dict | None = None, head=()) -> None:
     """Write into `<dir>.tmp`, then swap: dir -> .old, .tmp -> dir, drop .old (Windows-safe).
 
     `steps`/`progress`: the unfinished epoch's step rows and loss accumulators (empty at epoch end),
@@ -43,7 +48,7 @@ def save_full(dir: Path, encoder, P, queues, optimizer, state: dict, steps: list
     if tmp.exists():  # stale tmp of an interrupted save; a failure to remove it must surface
         shutil.rmtree(tmp)
     tmp.mkdir(parents=True)
-    _checkpoint(encoder, P, queues, optimizer).write(str(tmp / "ckpt"))
+    _checkpoint(encoder, P, queues, optimizer, head).write(str(tmp / "ckpt"))
     write_steps(list(steps), tmp / "partial_steps.parquet")
     dump_json(progress or {}, tmp / "epoch_progress.json")
     dump_json({k: state[k] for k in STATE_KEYS}, tmp / "state.json")
@@ -56,10 +61,10 @@ def save_full(dir: Path, encoder, P, queues, optimizer, state: dict, steps: list
     shutil.rmtree(old, ignore_errors=True)
 
 
-def restore_full(dir: Path, encoder, P, queues, optimizer) -> dict:
+def restore_full(dir: Path, encoder, P, queues, optimizer, head=()) -> dict:
     """Restore all §7.4 state in place (optimizer must already be built); returns state.json."""
     d = _existing(dir)
-    _checkpoint(encoder, P, queues, optimizer).read(str(d / "ckpt")).assert_consumed()
+    _checkpoint(encoder, P, queues, optimizer, head).read(str(d / "ckpt")).assert_consumed()
     return read_state(d)
 
 

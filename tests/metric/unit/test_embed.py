@@ -17,7 +17,7 @@ class CountingMethod:
         self.w = np.ones(3, np.float32)
         self.calls = 0
 
-    def embed_for_search(self, x):
+    def embed_images(self, x):
         self.calls += 1
         return (x.mean(axis=(1, 2)) * self.w).astype(np.float32)
 

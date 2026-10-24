@@ -97,12 +97,14 @@ def _state_hash(enc, P, q, opt):
 
 
 def test_validation_does_not_mutate(smoke):
+    from metric.methods import build_method
     from metric.train import validate_epoch
     enc, P, q, opt = (smoke[k] for k in ("encoder", "P", "queues", "opt"))
     assert int(opt.iterations) == 6
     before = _state_hash(enc, P, q, opt)
     imgs = smoke["images"]
-    out = validate_epoch(enc, "proxy_cal", imgs[imgs["split"] == "validation"], smoke["store"],
+    method = build_method("proxy_cal", smoke["ctx"].params, len(P.numpy()), 7)
+    out = validate_epoch(enc, method, imgs[imgs["split"] == "validation"], smoke["store"],
                          smoke["ctx"].params)
     assert 0 <= out["val_correct_at_1"] <= out["n_valid_queries"]
     assert _state_hash(enc, P, q, opt) == before

@@ -16,14 +16,15 @@ from metric.checkpoint import (export_best, load_progress, read_state, restore_f
 from metric.data import (apply_class_subset, apply_per_class_limit, build_proxy_index,
                          check_disjoint, sampler_exclusions, steps_per_epoch)
 from metric.errors import RunStop
+from metric.methods import PROXY_STEP, UNTRAINABLE, build_method, make_embedder
 from metric.model import build_encoder
 from metric.pipeline import eval_arrays, train_dataset
-from metric.proxies import init_proxies, make_optimizer
+from metric.proxies import make_optimizer
 from metric.queues import ClassQueues
 from metric.sampler import SAMPLER_VERSION, BatchSampler
 from metric.search import blocked_topk, no_positive_mask, retrieval_table
 from metric.steplog import StepLogger, queue_snapshot, step_stats, write_queue_snapshot
-from metric.train_step import StepConfig, make_proxy_step
+from metric.train_step import StepConfig, make_method_step, make_proxy_step
 
 EPOCH_SCHEMA = {
     "run_id": "str", "epoch": "int64", "global_step": "int64", "val_recall_at_1": "float64",
@@ -32,7 +33,9 @@ EPOCH_SCHEMA = {
     "L_base_mean": "float64", "L_dev_mean": "float64", "L_total_mean": "float64",
     "epoch_time_s": "float64", "val_time_s": "float64", "peak_gpu_mem_bytes": "int64",
 }
-NORM_FAILURES = ("INVALID_EMBEDDING_NORM", "INVALID_PROXY_NORM")
+# graph-side stops: tf.debugging.Assert messages start with the failure type (metric.losses)
+GRAPH_FAILURES = ("INVALID_EMBEDDING_NORM", "INVALID_PROXY_NORM", "SAMPLER_ERROR",
+                  "DISTANCE_RANGE_VIOLATION")
 BASE_MINIMAL_NOTE = ("Вариант без очередей измеряет стоимость обучения; его меньшие накладные "
                      "расходы не сравниваются с калибровкой без этого пояснения.")
 
@@ -44,23 +47,26 @@ class TrainContext:
     run_dir: Path
     images: pd.DataFrame
     store: Any
-    method: str = "proxy_cal"  # shortcut: method_id until the Method protocol (Task 6.1)
+    method: str = "proxy_cal"  # method_id (`algorithms` key); the Method is built by run_training
     config_hash: str = ""
     manifest_hash: str = ""
     weights_sha256: str | None = None
 
 
 def validate_epoch(encoder, method, val_images, store, params) -> dict:
-    """Validation Recall@k over the validation split (gallery = same split, self excluded)."""
+    """Validation Recall@k over the validation split (gallery = same split, self excluded).
+
+    Embeds with the method's search embedding and searches with its metric.
+    """
     inp, s = params["input"], params["search"]
     ids = val_images["image_id"].to_numpy()
     cls = val_images["class_id"].to_numpy()
     bs = params["batch"]["classes"] * params["batch"]["per_class"]
-    z = np.concatenate([encoder.embed(tf.constant(x), params["embed"]["eps_z"]).numpy()
-                        for _, x in eval_arrays(list(ids), store, inp["resize_short"], inp["crop"],
-                                                bs, "none", 0)])
+    emb = make_embedder(method, encoder, params)
+    z = np.concatenate([emb.embed_images(x) for _, x in eval_arrays(
+        list(ids), store, inp["resize_short"], inp["crop"], bs, "none", 0)])
     res = blocked_topk(z, ids, z, ids, max(s["k"]), s["block_q"], s["block_g"], s["d2_tol"],
-                       "cosine")
+                       method.search_metric)
     _, summ = retrieval_table(res, cls, ids, cls, no_positive_mask(ids, cls, ids, cls),
                               ks=tuple(s["k"]))
     return {"val_recall_at_1": summ.get("recall_at_1"), "val_recall_at_5": summ.get("recall_at_5"),
@@ -85,7 +91,7 @@ def _failure(e, cur, gstep, sampler) -> tuple[str, dict]:
         return e.failure_type, e.details
     if isinstance(e, tf.errors.ResourceExhaustedError):
         return "OOM", {"global_step": step, "peak_gpu_mem_bytes": _peak_gpu_bytes()}
-    ftype = next((t for t in NORM_FAILURES if t in e.message), None)
+    ftype = next((t for t in GRAPH_FAILURES if t in e.message), None)
     if ftype is None:
         raise e
     details = {"global_step": step}
@@ -128,6 +134,8 @@ def resume_training(ctx: TrainContext, checkpoint_dir: Path) -> dict:
 
 def _run(ctx: TrainContext, ckpt: Path | None = None) -> dict:
     p, seed, run_dir = ctx.params, ctx.seed, Path(ctx.run_dir)
+    if ctx.method in UNTRAINABLE:
+        raise ConfigError(f"{ctx.method} has no training: embed it directly")
     run_id = run_dir.name
     run_dir.mkdir(parents=True, exist_ok=True)
     check_disjoint(ctx.images)
@@ -154,12 +162,18 @@ def _run(ctx: TrainContext, ckpt: Path | None = None) -> dict:
     n_cls, d = len(proxy_index), p["model"]["embedding_dim"]
     dense_seed = int(stream(seed, "init", 0).integers(2**31 - 1))
     encoder = build_encoder(p["model"]["weights"], inp["crop"], d, dense_seed)
-    P = init_proxies(n_cls, d, stream(seed, "init", 1))
-    queues = ClassQueues(n_cls, cal["K"], d) if cal["queues"] else None
+    method = build_method(ctx.method, p, n_cls, seed)
+    P = getattr(method, "P", None)
+    head = [v for v in method.extra_variables if v is not P]  # checkpointed beside P
+    queues = ClassQueues(n_cls, cal["K"], d) if method.uses_queues else None
     optimizer = make_optimizer(p["optimizer"]["lr"])
     cfg = StepConfig(kappa=p["proxy"]["kappa"], lam=cal["lambda"], n_warm=cal["n_warm"],
                      eps_z=p["embed"]["eps_z"], eps_p=p["proxy"]["eps_p"])
-    step_fn = make_proxy_step(encoder, P, queues, optimizer, cfg)
+    proxy_step = ctx.method in PROXY_STEP
+    if proxy_step:
+        step_fn = make_proxy_step(encoder, P, queues, optimizer, cfg)
+    else:
+        step_fn = make_method_step(encoder, method, optimizer, cfg)
     epochs, check_every, tol = p["train"]["epochs"], p["queue"]["check_every"], p["queue"]["sum_tol"]
     every = p["checkpoint"]["every_steps"]
     preprocess = {"resize_short": inp["resize_short"], "crop": inp["crop"], "channel_order": "RGB",
@@ -170,7 +184,7 @@ def _run(ctx: TrainContext, ckpt: Path | None = None) -> dict:
     batch_frames, epoch_batches, epoch_rows, queue_checks = [], [], [], []
     best, sampler, cur, epoch, gstep, losses = None, None, None, 0, -1, []
     if ckpt is not None:  # batches are pure functions of (seed, step): only the state is restored
-        st = restore_full(ckpt, encoder, P, queues, optimizer)
+        st = restore_full(ckpt, encoder, P, queues, optimizer, head)
         gstep = st["global_step"]
         if st["best_epoch"] is not None:
             best = {"epoch": st["best_epoch"], "val_correct_at_1": st["best_correct_at_1"]}
@@ -199,7 +213,8 @@ def _run(ctx: TrainContext, ckpt: Path | None = None) -> dict:
             "epoch": epoch, "global_step": gstep, "seed": seed, "sampler_version": SAMPLER_VERSION,
             **best_fields(), "config_hash": ctx.config_hash, "manifest_hash": ctx.manifest_hash,
             "weights_sha256": ctx.weights_sha256},
-            steps=logger.rows, progress={"losses": np.asarray(losses, np.float64).tolist()})
+            steps=logger.rows, progress={"losses": np.asarray(losses, np.float64).tolist()},
+            head=head)
 
     try:
         sampler = BatchSampler(proxy_index, train, seed, b["classes"], b["per_class"],
@@ -218,7 +233,7 @@ def _run(ctx: TrainContext, ckpt: Path | None = None) -> dict:
                 gstep, cur = cur, None
                 epoch_batches.append(sampler.to_frame(sampler.batch(gstep)))
                 if queues is None:
-                    stats = step_stats(P.numpy())
+                    stats = step_stats(None if P is None else P.numpy())
                 else:
                     mu, n = (v.numpy() for v in queues.centers())
                     stats = step_stats(P.numpy(), n, mu, cal["K"],
@@ -238,14 +253,15 @@ def _run(ctx: TrainContext, ckpt: Path | None = None) -> dict:
             # end of epoch
             check(gstep)
             logger.end_epoch(epoch)
-            write_queue_snapshot(queue_snapshot(queues, P, gstep),
-                                 run_dir / "queue_state" / f"epoch-{epoch:03d}.parquet")
+            if P is not None:
+                write_queue_snapshot(queue_snapshot(queues, P, gstep),
+                                     run_dir / "queue_state" / f"epoch-{epoch:03d}.parquet")
             batch_frames.append(pd.concat(epoch_batches, ignore_index=True))
             epoch_batches = []
             _write(pd.concat(batch_frames, ignore_index=True), run_dir / "batches.parquet")
             epoch_time = time.perf_counter() - t_epoch
             t_val = time.perf_counter()
-            vrow = validate_epoch(encoder, ctx.method, val, ctx.store, p)
+            vrow = validate_epoch(encoder, method, val, ctx.store, p)
             lm = np.mean(np.asarray(losses, np.float64), axis=0)
             losses = []  # epoch flushed: the epoch-end checkpoint carries no partial progress
             row = {"run_id": run_id, "epoch": epoch, "global_step": gstep, **vrow,
@@ -266,7 +282,7 @@ def _run(ctx: TrainContext, ckpt: Path | None = None) -> dict:
                     "n_valid_queries": row["n_valid_queries"],
                     "selection_rule": "max_val_recall_at_1_tie_earliest",
                     "encoder_path": "checkpoints/best/encoder.keras", "weights_hash": whash,
-                    "disclaimers": [] if queues is not None else [BASE_MINIMAL_NOTE],
+                    "disclaimers": [BASE_MINIMAL_NOTE] if proxy_step and queues is None else [],
                 }, run_dir / "best_checkpoint.json")
             save()
     except (RunStop, tf.errors.InvalidArgumentError, tf.errors.ResourceExhaustedError) as e:

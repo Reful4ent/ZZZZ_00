@@ -32,7 +32,8 @@ def train_dataset(sampler, store, start_step: int, n_steps: int, prefetch: int):
     return tf.data.Dataset.from_generator(gen, output_signature=sig).prefetch(prefetch)
 
 
-def eval_arrays(image_ids, store, resize_short, crop, batch, degradation_id, seed):
+def eval_arrays(image_ids, store, resize_short, crop, batch, degradation_id, seed, raw=False):
+    """(ids, batch): preprocess_input'd, or float32 RGB in [0,255] when `raw`."""
     for s in range(0, len(image_ids), batch):
         ids = image_ids[s:s + batch]
         xs = []
@@ -43,4 +44,5 @@ def eval_arrays(image_ids, store, resize_short, crop, batch, degradation_id, see
                 rng = stream(seed, "augment", 2**31 + i)
                 c = degrade(c / 255.0, degradation_id, rng) * 255.0
             xs.append(c)
-        yield ids, to_model_input(np.stack(xs))
+        x = np.stack(xs)
+        yield ids, x.astype(np.float32) if raw else to_model_input(x)
