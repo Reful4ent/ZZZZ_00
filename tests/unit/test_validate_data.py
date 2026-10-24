@@ -28,28 +28,28 @@ def _vdir(world):
 @pytest.fixture
 def world(tmp_path, monkeypatch):
     w = make_world(tmp_path, monkeypatch, build=False)
-    assert main(w.argv("build-manifests")) == 0
+    assert main(w.exp_argv("build-manifests")) == 0
     return w
 
 
 def test_build_then_validate_ok(world):
     assert (_vdir(world) / FROZEN).is_file()
-    assert main(world.argv("validate-data")) == 0
+    assert main(world.exp_argv("validate-data")) == 0
     rep = _report(world)
     assert rep["ok"] is True and rep["issues"] == [] and rep["version"] == "v1"
-    assert main(world.argv("build-manifests")) == 5   # an existing version is never rebuilt
+    assert main(world.exp_argv("build-manifests")) == 5   # an existing version is never rebuilt
 
 
 def test_validate_without_manifest_exit_3(tmp_path, monkeypatch):
     w = make_world(tmp_path, monkeypatch, build=False)
-    assert main(w.argv("validate-data")) == 3
+    assert main(w.exp_argv("validate-data")) == 3
 
 
 def test_validate_detects_deleted_image(world):
     images = read_parquet(_vdir(world) / "images.parquet")
     victim = images.relative_path.iloc[0]
     (Path(world.cfg_dict["paths"]["data_root"]) / victim).unlink()
-    assert main(world.argv("validate-data")) == 3
+    assert main(world.exp_argv("validate-data")) == 3
     rep = _report(world)
     missing = next(i for i in rep["issues"] if i["check"] == "files_present")
     assert victim in missing["items"]
@@ -59,7 +59,7 @@ def test_validate_detects_modified_image_sha(world):
     images = read_parquet(_vdir(world) / "images.parquet")
     victim = Path(world.cfg_dict["paths"]["data_root"]) / images.relative_path.iloc[3]
     victim.write_bytes(victim.read_bytes() + b"\0")
-    assert main(world.argv("validate-data")) == 3
+    assert main(world.exp_argv("validate-data")) == 3
     assert any(i["check"] == "files_sha256" for i in _report(world)["issues"])
 
 
@@ -74,7 +74,7 @@ def test_validate_detects_split_drift(world):
     pairs = {p.name: read_parquet(p / "pairs.parquet") for p in vdir.iterdir() if (p / "pairs.parquet").is_file()}
     frozen["manifest_hash"] = manifest_hash(images, load_json(vdir / "datasets.json"), pairs)   # fake the freeze
     (vdir / FROZEN).write_text(__import__("json").dumps(frozen), encoding="utf-8")
-    assert main(world.argv("validate-data")) == 3
+    assert main(world.exp_argv("validate-data")) == 3
     issues = {i["check"]: i for i in _report(world)["issues"]}
     assert "manifest_hash" not in issues and "splits_recomputed" in issues
 
@@ -86,7 +86,7 @@ def test_validate_blocks_on_cross_split_duplicates(world):   # T-DAT-06 end-to-e
     b = kadid[kadid.split == "test"].relative_path.iloc[0]
     root = Path(world.cfg_dict["paths"]["data_root"])
     shutil.copy(root / a, root / b)
-    assert main(world.argv("validate-data")) == 3
+    assert main(world.exp_argv("validate-data")) == 3
     issues = {i["check"]: i for i in _report(world)["issues"]}
     assert "cross_split_duplicates" in issues and "files_sha256" in issues
 
@@ -97,13 +97,13 @@ def test_build_blocking_duplicate_exit_3(tmp_path, monkeypatch):
     first_train = (root / "Ebay_train.txt").read_text(encoding="utf-8").splitlines()[1].split()[3]
     first_test = (root / "Ebay_test.txt").read_text(encoding="utf-8").splitlines()[1].split()[3]
     shutil.copy(root / first_train, root / first_test)
-    assert main(w.argv("build-manifests")) == 3   # LeakageError: not frozen
+    assert main(w.exp_argv("build-manifests")) == 3   # LeakageError: not frozen
     assert not (_vdir(w) / FROZEN).exists()
 
 
 def test_build_with_overrides_file(tmp_path, monkeypatch):
     w = make_world(tmp_path, monkeypatch, build=False)
-    assert main(w.argv("build-manifests")) == 0
+    assert main(w.exp_argv("build-manifests")) == 0
     images = read_parquet(_vdir(w) / "images.parquet")
     sha = images[images.dataset_id == "sop"].sha256.iloc[0]   # an HPatches view would make the delivery a subset
     for ds in w.cfg_dict["datasets"].values():
@@ -111,9 +111,9 @@ def test_build_with_overrides_file(tmp_path, monkeypatch):
     w.write("cfg2.yaml")
     ov = tmp_path / "overrides.yaml"
     ov.write_text(yaml.safe_dump({"exclude_image": [{"sha256": sha, "reason": "test"}]}), encoding="utf-8")
-    assert main([*w.argv("build-manifests"), "--overrides", str(ov)]) == 0
+    assert main([*w.exp_argv("build-manifests"), "--overrides", str(ov)]) == 0
     assert load_json(Path(w.cfg_dict["paths"]["manifest_dir"]) / "v2" / "exclusions.json")[0]["reason"] == "test"
-    assert main(w.argv("validate-data")) == 0   # exclusions are re-applied before recomputing splits
+    assert main(w.exp_argv("validate-data")) == 0   # exclusions are re-applied before recomputing splits
 
 
 def test_provenance_fields_present(world):   # T-DAT-08

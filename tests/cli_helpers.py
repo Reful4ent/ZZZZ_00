@@ -1,5 +1,6 @@
 """A small end-to-end world for CLI tests: fixture data, a config, a frozen manifest with toy pairs."""
 
+import copy
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -38,16 +39,27 @@ class World:
     cfg_path: Path
     registry_path: Path
     out_root: Path
+    exp_dict: dict = None
+    exp_path: Path = None
+    runs: list = None
 
     def argv(self, *cmd: str) -> list[str]:
+        """Module command line (module config)."""
         return [*cmd, "--config", str(self.cfg_path), "--protocol-registry", str(self.registry_path)]
+
+    def exp_argv(self, *cmd: str) -> list[str]:
+        """experiments command line (experiments config: same data sections, params.runs)."""
+        return [*cmd, "--config", str(self.exp_path), "--protocol-registry", str(self.registry_path)]
 
     def write(self, name: str = "cfg.yaml") -> Path:
         self.cfg_path = write_cfg(self.cfg_dict, self.root / name)
+        self.exp_dict = {**copy.deepcopy(self.cfg_dict), "params": {"runs": self.runs}}
+        self.exp_path = write_cfg(self.exp_dict, self.root / f"exp-{name}")
         return self.cfg_path
 
 
-def make_world(root: Path, monkeypatch, *, profile: str = "smoke", algorithms=None, build: bool = True) -> World:
+def make_world(root: Path, monkeypatch, *, profile: str = "smoke", algorithms=None, build: bool = True,
+               runs=None) -> World:
     """smoke: all four fixture datasets; pilot/confirmatory: SOP only (real-data rules allow no fixtures)."""
     data_root, out_root = root / "data", root / "out"
     if profile == "smoke":
@@ -63,6 +75,7 @@ def make_world(root: Path, monkeypatch, *, profile: str = "smoke", algorithms=No
     reg = root / "protocol_registry.json"
     register_version(reg, "1", None)
     world = World(root, d, root / "cfg.yaml", reg, out_root)
+    world.runs = list(runs if runs is not None else [{"module": "photometric", "command": "run", "config": "cfg.yaml"}])
     world.write()
     monkeypatch.setattr(registry, "_PAIR_BUILDERS", {p: toy_pairs(p) for p in RELATION})
     if build:

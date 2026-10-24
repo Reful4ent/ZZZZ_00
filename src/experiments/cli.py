@@ -8,10 +8,11 @@ from typing import Callable, Sequence
 
 import yaml
 
-from expcore.cli_common import add_common_args, path_overrides, run_cli
+from expcore.cli_common import add_common_args, path_overrides, plan_dir, run_cli
 from expcore.config import Config, load_config, register_params_schema
 from expcore.errors import ConfigError, DataValidationError
 from expcore.manifests import build_manifests
+from experiments.plan import PlanEntry, make_plan, run_plan, write_plan
 from experiments.validate import report_path, validate_data
 
 MODULE = "experiments"
@@ -19,7 +20,8 @@ MODULE = "experiments"
 
 @dataclass(frozen=True)
 class ExperimentsParams:
-    """No parameters of its own: experiments orchestrates the module runs."""
+    """The run matrix: module configs that `plan` expands over the profile's seeds."""
+    runs: tuple[PlanEntry, ...]
 
 
 register_params_schema(MODULE, ExperimentsParams)
@@ -50,9 +52,29 @@ def _validate_data(args: argparse.Namespace) -> None:
     print(f"manifest {report['version']} valid")
 
 
-HANDLERS: dict[str, Callable[[argparse.Namespace], None]] = {
+def _plan(args: argparse.Namespace) -> None:
+    cfg = _config(args)
+    out = plan_dir(cfg.paths.out_root, cfg.profile, cfg.protocol_version)
+    runs = make_plan(cfg, Path(args.config).parent, out)
+    write_plan(out, runs, cfg, registry_path=args.protocol_registry)
+    print(f"{len(runs)} runs planned in {out}")
+
+
+def _run(args: argparse.Namespace) -> int:
+    cfg = _config(args)
+    extra = ["--protocol-registry", str(args.protocol_registry)]
+    for flag, value in (("--data-root", args.data_root), ("--manifest-dir", args.manifest_dir),
+                        ("--out-root", args.out_root)):
+        if value is not None:
+            extra += [flag, str(value)]
+    return run_plan(plan_dir(cfg.paths.out_root, cfg.profile, cfg.protocol_version), extra)
+
+
+HANDLERS: dict[str, Callable[[argparse.Namespace], int | None]] = {
     "build-manifests": _build_manifests,
     "validate-data": _validate_data,
+    "plan": _plan,
+    "run": _run,
 }
 
 

@@ -46,16 +46,18 @@ def command_parser(prog: str, commands: Sequence[str]) -> argparse.ArgumentParse
     return parser
 
 
-def run_cli(main: Callable[[argparse.Namespace], None], argv: Sequence[str] | None, *,
+def run_cli(main: Callable[[argparse.Namespace], int | None], argv: Sequence[str] | None, *,
             parser: argparse.ArgumentParser) -> int:
-    """Parse, run, map exceptions to exit codes: ProtocolError → its code, anything else → 4."""
+    """Parse, run, map exceptions to exit codes: ProtocolError → its code, anything else → 4.
+
+    A handler may return an int (e.g. the largest code of the runs it launched); None means 0.
+    """
     try:
         args = parser.parse_args(argv)
     except SystemExit as e:   # --help (0) or bad arguments (2)
         return e.code if isinstance(e.code, int) else 2
     try:
-        main(args)
-        return 0
+        return main(args) or 0
     except ProtocolError as e:
         print(f"{type(e).__name__}: {e}", file=sys.stderr)
         return e.exit_code
