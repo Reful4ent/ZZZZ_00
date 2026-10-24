@@ -143,7 +143,7 @@ def _run(ctx: TrainContext, ckpt: Path | None = None) -> dict:
     val = ctx.images[ctx.images["split"] == "validation"].reset_index(drop=True)
     dp = p["data"]
     if dp["class_subset"] is not None:
-        train = apply_class_subset(train, dp["class_subset"], seed)
+        train = apply_class_subset(train, dp["class_subset"]["n_classes"], dp["class_subset"]["seed"])
     if dp["per_class_limit"] is not None or dp["cohort_min_images"] is not None:
         train = apply_per_class_limit(train, dp["per_class_limit"], dp["cohort_min_images"] or 0)
     proxy_index = build_proxy_index(train)

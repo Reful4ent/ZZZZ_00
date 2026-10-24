@@ -58,3 +58,10 @@ def test_steps_per_epoch():
     assert steps_per_epoch(47616) == 1488
     assert steps_per_epoch(47617) == 1489
     assert steps_per_epoch(1) == 1
+
+
+def test_class_subset_independent_of_run_seed():   # spec 4.5: subset seed comes from params, not the run
+    df = pd.DataFrame({"class_id": [str(i % 12) for i in range(48)], "image_id": range(48)})
+    cs = {"n_classes": 5, "seed": 3}
+    sets = [set(apply_class_subset(df, cs["n_classes"], cs["seed"])["class_id"]) for _run_seed in (11, 23, 37)]
+    assert sets[0] == sets[1] == sets[2] and len(sets[0]) == 5

@@ -63,9 +63,9 @@ def test_rejects_lr_change_for_proxy(tmp_path):
 
 
 def test_rejects_subset_confirmatory(tmp_path):
-    validate_profile(_cfg(tmp_path, "pilot", data={"class_subset": 5}))
+    validate_profile(_cfg(tmp_path, "pilot", data={"class_subset": {"n_classes": 5, "seed": 1}}))
     with pytest.raises(ConfigError):
-        validate_profile(_cfg(tmp_path, "confirmatory", data={"class_subset": 5}))
+        validate_profile(_cfg(tmp_path, "confirmatory", data={"class_subset": {"n_classes": 5, "seed": 1}}))
 
 
 def test_rejects_nwarm_gt_K(tmp_path):
@@ -107,3 +107,22 @@ def test_smoke_allows_only_md27_substitutions(tmp_path):
     validate_profile(_cfg(tmp_path, "smoke", src=SMOKE, batch={}))
     with pytest.raises(ConfigError):
         validate_profile(_cfg(tmp_path, "smoke", src=SMOKE, batch={"classes": 8}))
+
+
+def test_class_subset_loads_with_own_seed(tmp_path):
+    cfg = _cfg(tmp_path, data={"class_subset": {"n_classes": 5, "seed": 1}})
+    assert params_dict(cfg.params)["data"]["class_subset"] == {"n_classes": 5, "seed": 1}
+    with pytest.raises(ConfigError):
+        _cfg(tmp_path, data={"class_subset": 5})
+
+
+def test_method_ids_match_methods(tf_or_skip):
+    from metric.methods import build_method
+    from metric.params import METHOD_IDS
+    P = params_dict(load_config(SMOKE, module="metric").params)
+    P["model"]["weights"] = None
+    P["input"]["crop"] = 32
+    for mid in METHOD_IDS:
+        assert build_method(mid, P, 4, 1).method_id == mid
+    with pytest.raises(ConfigError):
+        build_method("nope", P, 4, 1)

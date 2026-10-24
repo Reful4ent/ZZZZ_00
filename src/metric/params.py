@@ -120,8 +120,14 @@ class LossP:
 
 
 @dataclass(frozen=True)
+class ClassSubsetP:
+    n_classes: int
+    seed: int   # own seed (spec 4.5): the subset must not depend on the run seed
+
+
+@dataclass(frozen=True)
 class DataP:
-    class_subset: int | None   # n_classes of the train subset (metric.data.apply_class_subset)
+    class_subset: ClassSubsetP | None
     per_class_limit: int | None
     cohort_min_images: int | None
 
@@ -182,7 +188,7 @@ def params_dict(p: MetricParams) -> dict:
 def _flat(d: dict, prefix: str = "") -> dict:
     out = {}
     for k, v in d.items():
-        out.update(_flat(v, f"{prefix}{k}.") if isinstance(v, dict) else {f"{prefix}{k}": list(v) if isinstance(v, tuple) else v})
+        out.update(_flat(v, f"{prefix}{k}.") if isinstance(v, dict) and k != "class_subset" else {f"{prefix}{k}": list(v) if isinstance(v, tuple) else v})
     return out
 
 
