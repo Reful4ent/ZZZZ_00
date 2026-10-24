@@ -212,10 +212,12 @@ def check_counts(raw: pd.DataFrame, dataset_cfg: DatasetCfg) -> dict[str, Any]:
 def hpatches_completeness(raw: pd.DataFrame, dataset_cfg: DatasetCfg, data_root: Path) -> dict[str, Any]:
     """full | subset | unverified (spec §4.3); homographies are checked on disk under data_root."""
     root = Path(data_root) / dataset_cfg.dataset_id
-    sequences = sorted(raw["source_group_id"].unique())
+    # Sequences come from the directories on disk: one without any image has no raw rows but must be listed.
+    on_disk = {p.name for p in root.iterdir() if p.is_dir()} if root.is_dir() else set()
+    sequences = sorted(on_disk | set(raw["source_group_id"]))
     present = raw.groupby("source_group_id")["natural_key"].agg(lambda s: {k.split("/", 1)[1] for k in s})
     incomplete = [seq for seq in sequences
-                  if not set(_HP_IMAGES) <= present[seq]
+                  if not set(_HP_IMAGES) <= present.get(seq, set())
                   or not all((root / seq / h).is_file() for h in _HP_HOMOGRAPHIES)]
     expected_n = dataset_cfg.expected.get("sequences")
     if incomplete or (expected_n is not None and expected_n != len(sequences)):

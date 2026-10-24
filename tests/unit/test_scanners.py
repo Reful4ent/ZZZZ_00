@@ -126,3 +126,14 @@ def test_sop_class_disjoint(tmp_path, fixture_cfg):
     test_txt.write_text("\n".join(lines) + "\n", encoding="utf-8")
     with pytest.raises(LeakageError):
         scan(fixture_cfg.datasets["sop"], tmp_path)
+
+
+def test_hpatches_empty_sequence_dir_listed(tmp_path, fixture_cfg):   # review P3-I2: ДАН-03 lists all sequences
+    make_hpatches(tmp_path / "hpatches")
+    (tmp_path / "hpatches" / "v_empty").mkdir()
+    (tmp_path / "hpatches" / "v_honly").mkdir()
+    (tmp_path / "hpatches" / "v_honly" / "H_1_2").write_text("1 0 0\n0 1 0\n0 0 1\n", encoding="utf-8")
+    cfg = dataclasses.replace(fixture_cfg.datasets["hpatches"], expected={})
+    rep = hpatches_completeness(scan(cfg, tmp_path), cfg, tmp_path)
+    assert {"v_empty", "v_honly"} <= set(rep["sequences"]) and rep["incomplete"] == ["v_empty", "v_honly"]
+    assert rep["status"] == "subset"

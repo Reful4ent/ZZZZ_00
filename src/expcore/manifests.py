@@ -15,7 +15,7 @@ import pandas as pd
 
 from expcore import registry
 from expcore.config import Config, DatasetCfg
-from expcore.errors import ConfigError, DataValidationError, ProtocolViolationError
+from expcore.errors import ConfigError, DataValidationError, InsufficientDataError, ProtocolViolationError
 from expcore.hashing import canonical_json, sha256_file, sha256_text, table_content_hash
 from expcore.integrity import assert_not_blocking, check_integrity, write_duplicates_report
 from expcore.io import dump_json, load_json, read_parquet, write_parquet
@@ -63,9 +63,14 @@ def assign_splits(raw: pd.DataFrame, dataset_cfg: DatasetCfg) -> pd.DataFrame:
     elif dataset_cfg.dataset_id == "mvtec_ad":
         parts = {}
         train = raw[raw["role"] == "train_good"]
-        for _, g in train.groupby("category_id", sort=True):
-            for part, keys in split_mvtec_category(list(g["source_group_id"])).items():
-                parts.setdefault(part, []).extend(keys)
+        for cat in dataset_cfg.categories:   # every configured category, also one with no train images
+            keys = list(train.loc[train["category_id"] == cat, "source_group_id"])
+            try:
+                cat_parts = split_mvtec_category(keys)
+            except InsufficientDataError as e:
+                raise InsufficientDataError(f"MVTec category {cat!r}: {e}") from e
+            for part, cat_keys in cat_parts.items():
+                parts.setdefault(part, []).extend(cat_keys)
         parts["real_test"] = list(raw.loc[raw["role"] == "test", "source_group_id"])   # official test, whole
     else:   # sop: official train classes split 80/20, official test unchanged
         train_classes = sorted({int(c) for c in raw.loc[raw["role"] == "train", "class_id"]})
@@ -183,16 +188,16 @@ def build_manifests(cfg: Config, data_root: Path, manifest_dir: Path, overrides:
     for ds_id, ds in sorted(cfg.datasets.items()):
         raw = scan(ds, data_root)
         checks[ds_id] = check_counts(raw, ds)   # composition of the delivery, before exclusions
-        if ds_id == "hpatches":
-            rep = hpatches_completeness(raw, ds, data_root)
-            if rep["status"] == "subset" and not rep["subset_name"]:
-                raise ConfigError("datasets.hpatches.expected.subset_name: required, HPatches delivery is a subset "
-                                  f"(incomplete: {rep['incomplete']})")
-            completeness[ds_id] = rep
         raw["sha256"] = [sha256_file(data_root / p) for p in raw["relative_path"]]
         raws[ds_id] = raw
     n_before = {ds_id: len(raw) for ds_id, raw in raws.items()}
     exclusions = _apply_overrides(raws, overrides)
+    if "hpatches" in raws:   # after exclusions: the report describes what the manifest holds (USER DECISION 3a)
+        rep = hpatches_completeness(raws["hpatches"], cfg.datasets["hpatches"], data_root)
+        if rep["status"] == "subset" and not rep["subset_name"]:
+            raise ConfigError("datasets.hpatches.expected.subset_name: required, HPatches data is a subset "
+                              f"(incomplete: {rep['incomplete']})")
+        completeness["hpatches"] = rep
 
     frames = []
     for ds_id, raw in raws.items():

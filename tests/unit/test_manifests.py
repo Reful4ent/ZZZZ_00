@@ -230,3 +230,27 @@ def test_registered_pair_builder_writes_pairs_into_hash(own_data, tmp_path, monk
     assert info.manifest_hash != manifest_hash(m.images, m.datasets, None)
     with pytest.raises(ProtocolViolationError):   # frozen: no more writes
         write_pairs(m.pairs["p1"], m.images, tmp_path / "manifests", info.version, "p1")
+
+
+def test_mvtec_empty_train_category_fails(tmp_path, fixture_cfg):   # review P3-I1: N=0 must not pass silently
+    from expcore.errors import InsufficientDataError
+    from tests.fixtures_builder import make_mvtec
+    make_mvtec(tmp_path / "mvtec_ad")
+    for p in (tmp_path / "mvtec_ad" / "wood" / "train" / "good").iterdir():
+        p.unlink()
+    cfg = fixture_cfg.datasets["mvtec_ad"]
+    with pytest.raises(InsufficientDataError, match="wood"):
+        assign_splits(scan(cfg, tmp_path), cfg)
+
+
+def test_hpatches_exclusion_marks_sequence_incomplete(own_data, tmp_path):   # review P3: completeness after overrides
+    data_root, d = own_data
+    seq = data_root / "hpatches" / "i_seq00"
+    from expcore.hashing import sha256_file
+    overrides = {"exclude_image": [{"sha256": sha256_file(seq / "3.ppm"), "reason": "corrupt view"}]}
+    with pytest.raises(ConfigError, match="subset_name"):
+        build_manifests(_cfg(d, tmp_path), data_root, tmp_path / "m1", overrides)
+    d["datasets"]["hpatches"]["expected"]["subset_name"] = "minus-one"
+    info = build_manifests(_cfg(d, tmp_path, "b.yaml"), data_root, tmp_path / "m2", overrides)
+    rep = load_json(info.dir / "completeness_report.json")["hpatches"]
+    assert rep["status"] == "subset" and rep["incomplete"] == ["i_seq00"]
