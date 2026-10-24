@@ -27,7 +27,7 @@ def test_select_tie_smaller_order():
 def test_select_missing_or_failed():
     c = cand(0, (1, 2, 3))
     c.runs.pop()
-    with pytest.raises(SelectError, match="c0-11|c0"):
+    with pytest.raises(SelectError, match=r"c0-11, c0-23.*do not match seeds"):
         select_best([c], SEEDS)
     bad = cand(1, (1, 2, 3))
     bad.runs[2] = RunResult("bad-37", 37, "failed", None, None, None)
@@ -47,3 +47,11 @@ def test_select_mismatched_denominator():
     c.runs[0] = RunResult("odd", 11, "completed", 1, 99, 1)
     with pytest.raises(SelectError):
         select_best([cand(0, (1, 2, 3)), c], SEEDS)
+
+
+@pytest.mark.parametrize("n_valid,correct", [(0, 0), (10, 11), (10, -1)])
+def test_select_rejects_impossible_counts(n_valid, correct):
+    c = cand(0, (1, 2, 3), n=10)
+    c.runs[1] = RunResult("odd-23", 23, "completed", correct, n_valid, 1)
+    with pytest.raises(SelectError, match="odd-23"):
+        select_best([c], SEEDS)

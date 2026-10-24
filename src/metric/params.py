@@ -201,12 +201,21 @@ def validate_profile(cfg: Config) -> None:
         raise ConfigError(f"algorithms: unknown method_id {method!r}; known: {METHOD_IDS}")
     p = params_dict(cfg.params)
     cal, spe = p["calibration"], p["train"]["steps_per_epoch"]
+    for key, ok, rule in (("calibration.lambda", lambda v: v >= 0, ">= 0"), ("calibration.K", lambda v: v >= 1, ">= 1"),
+                          ("calibration.n_warm", lambda v: v >= 1, ">= 1"), ("optimizer.lr", lambda v: v > 0, "> 0"),
+                          ("optimizer.epsilon", lambda v: v > 0, "> 0"), ("proxy.kappa", lambda v: v > 0, "> 0"),
+                          ("proxy.eps_p", lambda v: v > 0, "> 0"), ("embed.eps_z", lambda v: v > 0, "> 0"),
+                          ("model.embedding_dim", lambda v: v >= 1, ">= 1"),
+                          ("loss.margin", lambda v: v is None or v > 0, "> 0 or null")):
+        sec, name = key.split(".")
+        if not ok(p[sec][name]):
+            raise ConfigError(f"{key}: must be {rule}, got {p[sec][name]!r}")
     if cal["n_warm"] > cal["K"]:
         raise ConfigError(f"calibration.n_warm={cal['n_warm']} must not exceed K={cal['K']}")
     if not cal["queues"] and method == "proxy_cal":
         raise ConfigError("calibration.queues=false is allowed only for base_minimal and baselines")
     if not (spe == "auto" or (isinstance(spe, int) and not isinstance(spe, bool) and spe > 0)):
-        raise ConfigError(f"train.steps_per_epoch: 'auto' or a positive integer, got {spe!r}")
+        raise ConfigError(f"train.steps_per_epoch: must be 'auto' or a positive integer, got {spe!r}")
     if cfg.profile == "confirmatory" and p["data"]["class_subset"] is not None:
         raise ConfigError("data.class_subset is forbidden in the confirmatory profile")
 

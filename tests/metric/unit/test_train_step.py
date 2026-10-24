@@ -28,18 +28,19 @@ def _batch(seed=0, labels=(0, 1, 2, 0, 1, 2)):
     return x, np.array(labels, np.int32)
 
 
-def test_grad_theta_independent_of_dev(tf_or_skip):
+def test_grad_theta_independent_of_dev(tf_or_skip):   # PRIEM-M2 / G2-154: grad_theta L_total does not depend on lambda
     tf = tf_or_skip
-    from metric.losses import dev_loss
-    enc, P, q, *_ = _setup()
+    enc0, P0, q0, _, _, step0 = _setup(lam=0.0)
+    enc1, P1, q1, _, _, step1 = _setup(lam=1.0)
+    enc1.set_weights(enc0.get_weights())   # identical encoder / P / queues / fresh Adam, same batch
+    P1.assign(P0)
     x, y = _batch()
-    q.push(enc.embed(x, 1e-8), y, 0)
-    mu, n = q.centers()
-    with tf.GradientTape() as t:
-        enc.embed(x, 1e-8)  # touch encoder in tape
-        L, _ = dev_loss(P, mu, n, 1)
-    gs = t.gradient(L, enc.trainable_variables)
-    assert all(g is None or not np.any(tf.convert_to_tensor(g).numpy()) for g in gs)
+    step0(x, y, 0)
+    step1(x, y, 0)
+    # one Adam step is a function of the gradient alone: equal encoder updates <=> equal encoder gradients
+    for a, b in zip(enc0.trainable_variables, enc1.trainable_variables):
+        np.testing.assert_allclose(a.numpy(), b.numpy(), atol=1e-6)
+    assert np.abs(P0.numpy() - P1.numpy()).max() > 1e-6   # while the dev term does reach P
 
 
 def test_grad_p_matches_formula(tf_or_skip):

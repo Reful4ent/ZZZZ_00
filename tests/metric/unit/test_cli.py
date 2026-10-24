@@ -259,3 +259,26 @@ def test_weights_checksum_measured(tmp_path, monkeypatch):   # spec 5.1
     assert _main(world.argv("train")) == 0 and seen == [WEIGHTS_SHA256]
     (env,) = (world.out_root / "pilot" / "metric").glob("*/environment.json")
     assert load_json(env)["weights_file_sha256"] == WEIGHTS_SHA256
+
+
+@pytest.mark.parametrize("case", ["method", "manifest", "base_run", "no_stage"])
+def test_search_test_thresholds_provenance(tmp_path, monkeypatch, capsys, case):   # spec 9.5: tD of this model only
+    from expcore.io import dump_json
+    from expcore.thresholds import Threshold, save_threshold
+    from metric.runctx import source_run_id
+    from expcore.config import load_config
+    world = metric_world(tmp_path, monkeypatch)
+    m = load_manifest(world.out_root / "manifests", "v1")
+    cfg = load_config(world.cfg_path, module="metric")
+    val = world.root / "valstage"
+    val.mkdir()
+    save_threshold(Threshold("r", "other_method" if case == "method" else "proxy_cal", "c", 0.5, "validation", 3,
+                             "f" * 64 if case == "manifest" else m.manifest_hash), val / "thresholds.json")
+    if case != "no_stage":
+        dump_json({"base_run_id": "other-run" if case == "base_run" else source_run_id(cfg)}, val / "stage.json")
+    g = _npz(world, "g.npz", split="test")
+    assert _main(world.argv("search", "--gallery", g, "--queries", g, "--pairs",
+                            "--thresholds", str(val / "thresholds.json"))) == 2
+    assert {"method": "method_id", "manifest": "manifest_hash", "base_run": "base_run_id",
+            "no_stage": "stage.json"}[case] in capsys.readouterr().err
+    assert not _stage_dirs(world)

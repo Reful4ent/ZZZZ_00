@@ -69,3 +69,12 @@ def test_weights_hash_name_independent(tf_or_skip):
     assert weights_hash(a, "x") == weights_hash(b, "x")
     b.dense.kernel.assign(b.dense.kernel + 1.0)
     assert weights_hash(a, "x") != weights_hash(b, "x")
+
+
+def test_weights_file_sha_honours_keras_home(tf_or_skip, tmp_path, monkeypatch):
+    import hashlib
+    from metric.model import _WEIGHTS_FILE, weights_file_sha256
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / _WEIGHTS_FILE).write_bytes(b"known bytes")
+    monkeypatch.setenv("KERAS_HOME", str(tmp_path))
+    assert weights_file_sha256() == hashlib.sha256(b"known bytes").hexdigest()

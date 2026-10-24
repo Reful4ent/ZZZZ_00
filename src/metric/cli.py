@@ -209,6 +209,23 @@ def _write_predictions(run, rows, expected) -> None:
               run.run_dir / "progress.json")
 
 
+def _check_threshold_provenance(run, path: Path) -> None:
+    """tD must come from this method, this manifest and the validation search of the same base training run."""
+    from expcore.thresholds import load_threshold
+    from metric.runctx import source_run_id
+    t = load_threshold(path)
+    if t.method_id != run.method_id:
+        raise ConfigError(f"{path}: threshold method_id {t.method_id!r} != {run.method_id!r}")
+    if t.manifest_hash != run.manifest.manifest_hash:
+        raise ConfigError(f"{path}: threshold manifest_hash differs from this config's manifest")
+    stage = path.parent / "stage.json"
+    if not stage.is_file():
+        raise ConfigError(f"{stage}: missing; the threshold's base training run cannot be verified")
+    base = load_json(stage).get("base_run_id")
+    if base != source_run_id(run.cfg):
+        raise ConfigError(f"{path}: threshold base_run_id {base!r} != this config's {source_run_id(run.cfg)!r}")
+
+
 def _search(args: argparse.Namespace) -> None:
     import pandas as pd
     from expcore.thresholds import load_threshold
@@ -230,6 +247,8 @@ def _search(args: argparse.Namespace) -> None:
     run = prepare_run("search", args, deterministic_ops=None, stage=stage)
     if _completed(run):
         return
+    if args.thresholds:
+        _check_threshold_provenance(run, Path(args.thresholds))
     if args.pairs and run.method_id in RAW_L2_METHODS:
         raise ConfigError(f"search --pairs: pair scores are cosine (spec 9.6); {run.method_id} searches raw L2")
     for name, es in (("gallery", gallery), ("queries", queries)):

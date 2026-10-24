@@ -131,3 +131,13 @@ def test_method_ids_match_methods(tf_or_skip):
 def test_normalize_l2_not_varied(tmp_path):   # E6 no-L2 is the method proxy_softmax_noL2, not a param
     with pytest.raises(ConfigError):
         validate_profile(_cfg(tmp_path, "pilot", input={"normalize_l2": False}))
+
+
+@pytest.mark.parametrize("sec,key,bad", [
+    ("calibration", "lambda", -0.1), ("calibration", "K", 0), ("calibration", "n_warm", 0),
+    ("optimizer", "lr", 0.0), ("optimizer", "lr", -1e-4), ("optimizer", "epsilon", 0.0),
+    ("loss", "margin", 0.0), ("loss", "margin", -1.0), ("proxy", "kappa", 0), ("proxy", "eps_p", 0.0),
+    ("embed", "eps_z", -1e-12), ("model", "embedding_dim", 0), ("train", "steps_per_epoch", 0)])
+def test_rejects_out_of_range(tmp_path, sec, key, bad):
+    with pytest.raises(ConfigError, match=rf"{sec}\.{key}: must be"):
+        validate_profile(_cfg(tmp_path, **{sec: {key: bad}}))

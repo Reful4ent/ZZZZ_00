@@ -1,5 +1,6 @@
 """ResNet50 backbone (BN frozen in inference mode) + bias-free Dense head (spec 5.1)."""
 import hashlib
+import os
 from pathlib import Path
 
 import numpy as np
@@ -38,7 +39,7 @@ def build_encoder(weights, input_size, embedding_dim, dense_seed) -> Encoder:
 
 def weights_file_sha256(download=False):
     """SHA-256 of Keras' cached ImageNet weights; None if not cached (download=True fetches them first)."""
-    p = Path.home() / ".keras" / "models" / _WEIGHTS_FILE
+    p = Path(os.environ.get("KERAS_HOME") or Path.home() / ".keras") / "models" / _WEIGHTS_FILE
     if download and not p.is_file():
         p = Path(tf.keras.utils.get_file(_WEIGHTS_FILE, _WEIGHTS_URL, cache_subdir="models"))
     return hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else None

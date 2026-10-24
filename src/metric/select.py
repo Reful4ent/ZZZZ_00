@@ -34,6 +34,9 @@ def select_best(cands: list[Candidate], seeds: list[int]) -> tuple[Candidate, li
         bad = [r.run_id for r in c.runs if r.status != "completed" or r.correct_at_1 is None or r.n_valid is None]
         if bad:
             raise SelectError(f"incomplete or failed runs: {', '.join(bad)}")
+        odd = [r.run_id for r in c.runs if r.n_valid < 1 or not 0 <= r.correct_at_1 <= r.n_valid]
+        if odd:
+            raise SelectError(f"runs with n_valid < 1 or correct_at_1 outside [0, n_valid]: {', '.join(odd)}")
         if sorted(r.seed for r in c.runs) != sorted(seeds):
             raise SelectError(f"runs [{ids}] do not match seeds {seeds} exactly once each")
         s, n = sum(r.correct_at_1 for r in c.runs), sum(r.n_valid for r in c.runs)
