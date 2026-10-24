@@ -108,7 +108,8 @@ def write_pairs(pairs: pd.DataFrame, images: pd.DataFrame, manifest_dir: Path, v
     write_parquet(pairs[list(PAIRS_COLUMNS)], path, schema=PAIRS_COLUMNS, nullable=PAIRS_NULLABLE)
 
 
-def _version(cfg: Config) -> str:
+def manifest_version(cfg: Config) -> str:
+    """The one manifest version shared by every dataset of the config."""
     versions = sorted({ds.manifest_version for ds in cfg.datasets.values()})
     if len(versions) != 1:
         raise ConfigError(f"datasets.*.manifest_version: one manifest holds all datasets, got {versions}")
@@ -179,7 +180,7 @@ def _dataset_record(ds: DatasetCfg, data_root: Path, counts: dict, completeness:
 
 def build_manifests(cfg: Config, data_root: Path, manifest_dir: Path, overrides: Mapping | None = None) -> ManifestInfo:
     data_root = Path(data_root)
-    version = _version(cfg)
+    version = manifest_version(cfg)
     vdir = Path(manifest_dir) / version
     if vdir.exists():
         raise ProtocolViolationError(f"{vdir}: manifest version {version!r} already exists; versions are never "
