@@ -8,6 +8,8 @@ from expcore.seeding import stream
 from metric.augment import resized_shape
 from metric.errors import RunStop
 
+SAMPLER_VERSION = "p3-sampler-v1"  # bump when batch(t) changes for the same (seed, t, manifest)
+
 
 @dataclass
 class BatchSpec:

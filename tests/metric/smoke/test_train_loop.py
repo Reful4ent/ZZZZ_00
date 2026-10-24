@@ -69,7 +69,17 @@ def test_train_loop_smoke(smoke):
     best = json.loads((d / "best_checkpoint.json").read_text(encoding="utf-8"))
     assert best["epoch"] in (1, 2)
     assert best["selection_rule"] == "max_val_recall_at_1_tie_earliest"
-    assert (d / best["encoder_path"]).exists()
+    assert best["encoder_path"] == "checkpoints/best/encoder.keras"
+    import tensorflow as tf
+    assert tf.keras.models.load_model(d / best["encoder_path"]).output_shape == (None, 128)
+    pre = json.loads((d / "checkpoints/best/preprocess.json").read_text(encoding="utf-8"))
+    assert pre == {"resize_short": 64, "crop": 56, "channel_order": "RGB",
+                   "preprocess": "tf.keras.applications.resnet50.preprocess_input",
+                   "embedding_dim": 128, "normalize_l2": True}
+    st = json.loads((d / "checkpoints/last/state.json").read_text(encoding="utf-8"))
+    assert (st["epoch"], st["global_step"], st["sampler_version"]) == (2, 5, "p3-sampler-v1")
+    assert st["best_epoch"] == best["epoch"]
+    assert [c["global_step"] for c in smoke["result"]["queue_checks"]] == [2, 5]
     for f in ("proxy_index.parquet", "sampler_exclusions.parquet", "queue_state/epoch-001.parquet",
               "queue_state/epoch-002.parquet", "training_steps/part-002.parquet"):
         assert (d / f).exists(), f
