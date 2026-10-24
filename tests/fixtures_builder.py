@@ -26,8 +26,10 @@ def _rng(dataset_id: str) -> np.random.Generator:
 
 def _write(path: Path, img: np.ndarray) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    if not cv2.imwrite(str(path), img):
-        raise OSError(f"cv2.imwrite failed for {path}")
+    ok, buf = cv2.imencode(path.suffix, img)   # cv2.imwrite cannot write non-ASCII paths on Windows
+    if not ok:
+        raise OSError(f"cv2.imencode failed for {path}")
+    buf.tofile(path)
 
 
 def _noise(rng: np.random.Generator, channels: int = 3) -> np.ndarray:
