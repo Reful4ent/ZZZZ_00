@@ -132,3 +132,9 @@ def test_imagestore_never_exposes_paths(store_data):
     store = ImageStore(root, images, SplitGuard("pilot", fixture=False))
     assert not hasattr(store, "path_of")
     assert not [a for a in dir(store) if not a.startswith("_") and a != "load"]
+
+
+def test_input_mask_path_not_exposed(pairs):   # review P4-I4: a raw path would reach the algorithm
+    guard = SplitGuard("pilot", fixture=False)
+    with pytest.raises(ConfigError, match="input_mask_path"):
+        load_pair_inputs(pairs, BASE + ["input_mask_path"], "validation", guard)

@@ -19,6 +19,8 @@ from expcore.schemas import EVAL_ONLY_PAIR_COLUMNS
 
 PROFILE_SPLITS = {"pilot": frozenset({"train", "dev", "validation"})}
 TEST_SPLITS = frozenset({"test", "synthetic_test", "real_test"})
+# Whitelisted by D-17 but a path; paths can carry labels (D-05), so algorithms must not receive it as-is.
+PATH_PAIR_COLUMNS = frozenset({"input_mask_path"})
 _COLOR_FLAGS = {
     # IGNORE_ORIENTATION: manifest width/height come from IMREAD_UNCHANGED, which ignores EXIF orientation too.
     "bgr": cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION,
@@ -101,6 +103,9 @@ def _check_columns(columns: Sequence[str]) -> list[str]:
     leaked = [c for c in columns if c in FORBIDDEN_PAIR_COLUMNS or c in EVAL_ONLY_PAIR_COLUMNS]
     if leaked:
         raise ConfigError(f"inputs.pair_columns: evaluation column(s) {leaked} are not visible to algorithms (INV-11)")
+    if PATH_PAIR_COLUMNS & set(columns):
+        raise ConfigError(f"inputs.pair_columns: {sorted(PATH_PAIR_COLUMNS & set(columns))} would hand a file path "
+                          "to the algorithm (§5.3); opaque mask access is not implemented yet")
     unknown = [c for c in columns if c not in REQUIRED_PAIR_COLUMNS + OPTIONAL_PAIR_COLUMNS]
     missing = [c for c in REQUIRED_PAIR_COLUMNS if c not in columns]
     if unknown or missing:

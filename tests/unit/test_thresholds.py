@@ -15,7 +15,7 @@ median = lambda s, y: float(np.median(s))  # noqa: E731
 
 def _val(split="validation", direction="higher_is_match"):
     return pd.DataFrame({"split": [split] * 4, "y_match": [1, 1, 0, 0], "score_raw": [0.9, 0.7, 0.2, None],
-                         "score_direction": [direction] * 4})
+                         "score_direction": [direction] * 4, "outcome": ["decided"] * 3 + ["reject"]})
 
 
 def test_rejects_non_validation():   # INV-10
@@ -52,8 +52,6 @@ def test_roundtrip(tmp_path):
     save_threshold(t, tmp_path / "thresholds.json")
     assert load_threshold(tmp_path / "thresholds.json") == t
     assert "created_at" in json.loads((tmp_path / "thresholds.json").read_text(encoding="utf-8"))
-    with pytest.raises(ProtocolViolationError):   # read-only once written
-        save_threshold(t, tmp_path / "thresholds.json")
 
 
 def test_load_missing_or_wrong_split(tmp_path):
@@ -64,3 +62,35 @@ def test_load_missing_or_wrong_split(tmp_path):
     p.write_text(json.dumps({**t.__dict__, "created_at": "2026-10-24T00:00:00Z"}), encoding="utf-8")
     with pytest.raises(ProtocolViolationError):
         load_threshold(p)
+
+
+def test_corrupt_inputs_rejected():   # review P4-I1
+    for col, value in (("y_match", None), ("y_match", 2), ("score_direction", "lower-is-match"),
+                       ("score_raw", float("inf")), ("outcome", "error")):
+        df = _val(); df.loc[0, col] = value
+        with pytest.raises(DataValidationError):
+            select_threshold(df, median, **KW)
+    with pytest.raises(DataValidationError):
+        select_threshold(_val().drop(columns=["outcome"]), median, **KW)
+
+
+def test_only_scored_decisions_reach_criterion():   # review P4-I2: not_applicable and rejects are excluded
+    seen = {}
+
+    def crit(s, y):
+        seen["s"] = s.tolist()
+        return 0.0
+    df = _val()
+    df["score_raw"] = [0.9, 0.7, 0.2, 0.1]
+    df["outcome"] = ["decided", "not_applicable", "decided", "reject"]
+    select_threshold(df, crit, **KW)
+    assert seen["s"] == [0.9, 0.2]
+
+
+def test_save_is_idempotent(tmp_path):   # review P4-I3: resume / re-aggregate must not fail
+    from expcore.errors import ResultTamperedError
+    t = select_threshold(_val(), median, **KW)
+    save_threshold(t, tmp_path / "thresholds.json")
+    save_threshold(t, tmp_path / "thresholds.json")   # same content: no-op
+    with pytest.raises(ResultTamperedError):
+        save_threshold(Threshold(**{**t.__dict__, "value": 0.1}), tmp_path / "thresholds.json")
