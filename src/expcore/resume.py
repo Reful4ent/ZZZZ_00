@@ -23,7 +23,7 @@ from expcore.loaders import ImageStore, PairInput, QueryInput
 from expcore.runlog import JsonlLogger, RunRecord, now_utc
 from expcore.schemas import COMPONENT_PREFIX, PREDICTIONS_COLUMNS, PREDICTIONS_NULLABLE, validate_predictions
 from expcore.seeding import capture_rng_state, stream
-from expcore.timing import timed
+from expcore.timing import peak_memory_mb, timed
 
 SUCCESS = "_SUCCESS"
 AUG_COLUMNS = ("unit_id", "sample_id", "aug_name", "params_json")
@@ -40,8 +40,11 @@ class AugmentationLogger:
         self._pending.append({"unit_id": unit_id, "sample_id": str(sample_id), "aug_name": aug_name,
                               "params_json": canonical_json(params)})
 
-    def commit(self) -> None:
+    def commit(self, unit_id: int | None) -> None:
+        """Store the pending rows of `unit_id`, replacing rows a crashed attempt left for the same unit."""
         old = read_parquet(self._path) if self._path.exists() else pd.DataFrame(columns=list(AUG_COLUMNS))
+        if unit_id is not None and len(old):
+            old = old[old["unit_id"] != unit_id]
         new = pd.DataFrame(self._pending, columns=list(AUG_COLUMNS))
         table = pd.concat([old, new], ignore_index=True) if len(old) else new
         write_parquet(table, self._path, schema={"unit_id": "int64", "sample_id": "str", "aug_name": "str",
@@ -129,11 +132,19 @@ class Runner:
 
         if (ctx.run_dir / SUCCESS).exists():   # completed: verify, never rewrite
             self._verify_done(self._progress())
+            run_json = ctx.run_dir / "run.json"
+            if run_json.exists() and load_json(run_json)["status"] != "completed":
+                ctx.record.start()   # killed between _SUCCESS and run.json: finish the bookkeeping only
+                ctx.record.finish("completed")
             return self.pred_dir
         ctx.record.start()
+        self._timers = {"started_at": now_utc(), "compute_ms": 0.0, "write_ms": 0.0, "units_computed": 0}
         try:
             return self._run(items, keys, key, is_query, method_id)
-        except Exception as e:
+        except BaseException as e:
+            if not isinstance(e, Exception):   # KeyboardInterrupt / SystemExit: the attempt stays "running"
+                raise
+            self._write_timers("failed")
             failure = {"type": type(e).__name__ if isinstance(e, ProtocolError) else "TechnicalError",
                        "message": str(e), "unit_id": ctx.unit_id}
             self.errors.log("ERROR", "run_failed", **failure)
@@ -160,7 +171,7 @@ class Runner:
         progress = self._progress()
         self._verify_done(progress)
         ctx.augmentations = AugmentationLogger(ctx.run_dir)
-        timers = {"started_at": now_utc(), "compute_ms": 0.0, "write_ms": 0.0, "units_computed": 0}
+        timers = self._timers
 
         for unit_id in range(0, (len(items) + chunk - 1) // chunk):
             if str(unit_id) in progress["units"]:
@@ -177,7 +188,7 @@ class Runner:
                 df, shard, schema=PREDICTIONS_COLUMNS | dict.fromkeys(comps, "float64"),
                 nullable=PREDICTIONS_NULLABLE | frozenset(comps)))
             timers["write_ms"] += write_ms
-            ctx.augmentations.commit()
+            ctx.augmentations.commit(unit_id)
             progress["units"][str(unit_id)] = {"unit_id": unit_id, "n_rows": len(df), "sha256": sha256_file(shard)}
             dump_json(progress, ctx.run_dir / "progress.json")
             rng_state["units"][str(unit_id)] = capture_rng_state()
@@ -189,16 +200,22 @@ class Runner:
         expected = pd.DataFrame({key: keys})
         validate_predictions(read_predictions(ctx.run_dir), expected, require_complete=True)
         if not (ctx.run_dir / "augmentations.parquet").exists():
-            ctx.augmentations.commit()
-        timers_path = ctx.run_dir / "timers.json"
-        all_timers = load_json(timers_path) if timers_path.exists() else {"attempts": []}
-        timers["total_ms"] = timers["compute_ms"] + timers["write_ms"]
-        all_timers["attempts"].append(timers)
-        dump_json(all_timers, timers_path)
+            ctx.augmentations.commit(None)
+        self._write_timers("completed")
         atomic_write_bytes(ctx.run_dir / SUCCESS, b"")
         ctx.record.finish("completed")
         self.log.log("INFO", "run_completed", n_rows=len(keys))
         return self.pred_dir
+
+    def _write_timers(self, status: str) -> None:
+        """One timers.json entry per attempt, failed ones included, with peak memory (§9)."""
+        path = self.ctx.run_dir / "timers.json"
+        all_timers = load_json(path) if path.exists() else {"attempts": []}
+        peak, reason = peak_memory_mb()
+        t = self._timers
+        all_timers["attempts"].append({**t, "status": status, "total_ms": t["compute_ms"] + t["write_ms"],
+                                       "peak_memory_mb": peak, "peak_memory_reason": reason})
+        dump_json(all_timers, path)
 
     def _predict_unit(self, unit_items: list, key: str, is_query: bool, method_id: str) -> tuple[list[dict], float]:
         ctx = self.ctx

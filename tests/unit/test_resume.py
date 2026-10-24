@@ -206,3 +206,66 @@ def test_oracle_and_query_predictors(world, fixture_cfg):
     pred = read_predictions(ctx.run_dir)
     assert pred.pair_id.isna().all() and set(pred.timing_mode) == {"amortized_batch"} and len(pred) == 5
     validate_predictions(pred, pd.DataFrame({"query_id": [q.query_id for q in queries]}), require_complete=True)
+
+
+def test_cli_started_record_is_not_restarted(world, fixture_cfg):   # review P5-I1
+    root, pairs, items, store = world
+    ctx = make_ctx(root, fixture_cfg)
+    ctx.record.start()   # e.g. the CLI starts the record before looking up the algorithm
+    Runner(ctx, RandomScorePredictor(), store).run(items, method_id="random_score")
+    assert [a["status"] for a in load_json(ctx.run_dir / "run.json")["attempts"]] == ["completed"]
+
+
+def test_kill_between_success_and_finish_is_repaired(world, fixture_cfg, monkeypatch):   # review P5-I2
+    root, pairs, items, store = world
+    ctx = make_ctx(root, fixture_cfg)
+    real_finish = RunRecord.finish
+
+    def killed(self, status, failure=None):
+        if status == "completed":
+            raise KeyboardInterrupt   # process dies right after _SUCCESS
+        real_finish(self, status, failure)
+    monkeypatch.setattr(RunRecord, "finish", killed)
+    with pytest.raises(KeyboardInterrupt):
+        Runner(ctx, RandomScorePredictor(), store).run(items, method_id="random_score")
+    monkeypatch.setattr(RunRecord, "finish", real_finish)
+    assert (ctx.run_dir / "_SUCCESS").exists() and load_json(ctx.run_dir / "run.json")["status"] == "running"
+    before = shards(ctx.run_dir)
+    Runner(make_ctx(root, fixture_cfg), RandomScorePredictor(), store).run(items, method_id="random_score")
+    assert load_json(ctx.run_dir / "run.json")["status"] == "completed" and shards(ctx.run_dir) == before
+
+
+def test_augmentations_not_duplicated_on_recompute(tmp_path):   # review P5-I3
+    from expcore.resume import AugmentationLogger
+    log = AugmentationLogger(tmp_path)
+    log.log(0, "p0", "flip", {}); log.commit(0)
+    log.log(0, "p0", "flip", {}); log.commit(0)   # unit 0 recomputed after a crash before progress.json
+    log.log(1, "p1", "flip", {}); log.commit(1)
+    aug = pd.read_parquet(tmp_path / "augmentations.parquet")
+    assert sorted(zip(aug.unit_id, aug.sample_id)) == [(0, "p0"), (1, "p1")]
+
+
+def test_attempts_keep_their_provenance(world, fixture_cfg):   # review P5-I4
+    root, pairs, items, store = world
+    ctx = make_ctx(root, fixture_cfg)
+    with pytest.raises(TechnicalError):
+        Runner(ctx, CrashOnUnitPredictor(crash_unit=1), store).run(items, method_id="random_score")
+    ctx2 = make_ctx(root, fixture_cfg)
+    ctx2.record._static["git_commit"] = "c2"
+    Runner(ctx2, RandomScorePredictor(), store).run(items, method_id="random_score")
+    attempts = load_json(ctx.run_dir / "run.json")["attempts"]
+    assert [a["git_commit"] for a in attempts] == [None, "c2"]
+    for k, a in enumerate(attempts):
+        env = ctx.run_dir / a["environment_path"]
+        assert env.name == f"environment.attempt-{k}.json" and sha256_file(env) == a["environment_sha256"]
+
+
+def test_timers_record_every_attempt_and_peak_memory(world, fixture_cfg):   # review P5-I8
+    root, pairs, items, store = world
+    ctx = make_ctx(root, fixture_cfg)
+    with pytest.raises(TechnicalError):
+        Runner(ctx, CrashOnUnitPredictor(crash_unit=1), store).run(items, method_id="random_score")
+    Runner(make_ctx(root, fixture_cfg), RandomScorePredictor(), store).run(items, method_id="random_score")
+    attempts = load_json(ctx.run_dir / "timers.json")["attempts"]
+    assert [a["status"] for a in attempts] == ["failed", "completed"]
+    assert all("peak_memory_mb" in a and "peak_memory_reason" in a for a in attempts)

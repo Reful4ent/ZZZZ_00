@@ -92,3 +92,23 @@ def test_corrupt_registry_rejected(tmp_path):
     p.write_text(json.dumps([{"protocol_version": "1"}]), encoding="utf-8")
     with pytest.raises(DataValidationError):
         load_registry(p)
+
+
+def test_open_version_plan_hash_not_rewritten_elsewhere(reg, tmp_path):   # review P5-I6
+    write_plan_lock(tmp_path / "a", "1", RUNS, registry_path=reg)
+    open_test(reg, tmp_path / "a", "1", RUNS[0]["run_id"])
+    original = load_registry(reg)[0]["plan_hash"]
+    with pytest.raises(ProtocolViolationError):
+        write_plan_lock(tmp_path / "b", "1", RUNS[:1], registry_path=reg)
+    assert load_registry(reg)[0]["plan_hash"] == original
+    assert write_plan_lock(tmp_path / "c", "1", RUNS, registry_path=reg) == original   # identical re-plan: no-op
+
+
+def test_child_version_planned_in_its_own_dir(reg, tmp_path):   # review P5-I7
+    write_plan_lock(tmp_path / "1", "1", RUNS, registry_path=reg)
+    open_test(reg, tmp_path / "1", "1", RUNS[0]["run_id"])
+    register_version(reg, "2", "1")
+    write_plan_lock(tmp_path / "2", "2", RUNS[:1], registry_path=reg)
+    check_run_in_plan(tmp_path / "2", "c" * 64)
+    with pytest.raises(ProtocolViolationError, match="holds the plan of protocol version"):
+        write_plan_lock(tmp_path / "1", "2", RUNS[:1], registry_path=reg)   # one lock per version directory

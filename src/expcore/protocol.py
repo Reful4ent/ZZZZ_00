@@ -58,17 +58,26 @@ def write_plan_lock(out_dir: Path, version: str, runs: Sequence[Mapping], *,
     lock_path = out_dir / PLAN_LOCK
     if lock_path.exists():
         old = load_json(lock_path)
+        if old["protocol_version"] != version:
+            raise ProtocolViolationError(f"{lock_path} holds the plan of protocol version {old['protocol_version']!r}; "
+                                         "use one plan directory per protocol version")
         if old["plan_hash"] == plan_hash:
             return plan_hash
-        if (out_dir / TEST_OPENED).exists() or (registry_path and _opened(registry_path, old["protocol_version"])):
+        if (out_dir / TEST_OPENED).exists():
             raise ProtocolViolationError(f"{lock_path}: test is open for this plan; it cannot be changed (code 5)")
+    entries = entry = None
+    if registry_path is not None:
+        entries = load_registry(registry_path)
+        entry = _entry(entries, version, Path(registry_path))
+        if entry["test_opened"] and entry["plan_hash"] != plan_hash:   # wherever the new lock would be written
+            raise ProtocolViolationError(f"protocol version {version!r} has an open test; its plan cannot change "
+                                         "(code 5) — register a new version")
     out_dir.mkdir(parents=True, exist_ok=True)
     dump_json({"protocol_version": version, "plan_hash": plan_hash, "created_at": now_utc(),
                "config_hashes": sorted({r["config_hash"] for r in ordered}),
                "run_ids": [r["run_id"] for r in ordered]}, lock_path)
-    if registry_path is not None:
-        entries = load_registry(registry_path)
-        _entry(entries, version, Path(registry_path))["plan_hash"] = plan_hash
+    if entry is not None and entry["plan_hash"] != plan_hash:
+        entry["plan_hash"] = plan_hash
         dump_json(entries, registry_path)
     return plan_hash
 

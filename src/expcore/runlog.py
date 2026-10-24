@@ -41,17 +41,26 @@ def _git(repo: Path, *args: str) -> bytes | None:
 
 
 def git_state(repo: Path) -> tuple[str | None, str | None]:
-    """(HEAD commit, SHA-256 of `git diff HEAD` + untracked files) — (None, None) outside a repository."""
+    """(HEAD commit, SHA-256 of `git diff HEAD` + untracked files) of the whole work tree containing `repo`.
+
+    (None, None) outside a repository; an untracked nested repository counts by its name and HEAD.
+    """
+    top = _git(repo, "rev-parse", "--show-toplevel")
     head = _git(repo, "rev-parse", "--verify", "HEAD")
-    if head is None:
+    if top is None or head is None:
         return None, None
-    commit = head.decode().strip()
-    if not (_git(repo, "status", "--porcelain") or b"").strip():
+    root, commit = Path(top.decode().strip()), head.decode().strip()
+    if not (_git(root, "status", "--porcelain") or b"").strip():
         return commit, None
-    h = hashlib.sha256(_git(repo, "diff", "HEAD", "--binary") or b"")
-    untracked = (_git(repo, "ls-files", "--others", "--exclude-standard", "-z") or b"").split(b"\0")
+    h = hashlib.sha256(_git(root, "diff", "HEAD", "--binary", "--no-color", "--no-ext-diff") or b"")
+    untracked = (_git(root, "ls-files", "--others", "--exclude-standard", "-z") or b"").split(b"\0")
     for name in sorted(n for n in untracked if n):
-        h.update(b"\0" + name + b"\0" + (Path(repo) / name.decode()).read_bytes())
+        h.update(b"\0" + name + b"\0")
+        path = root / name.decode()
+        if path.is_dir():   # nested repository: git lists it as "<dir>/"
+            h.update(_git(path, "rev-parse", "--verify", "HEAD") or b"<no HEAD>")
+        else:
+            h.update(bytes.fromhex(sha256_file(path)))
     return commit, h.hexdigest()
 
 
@@ -126,7 +135,14 @@ class RunRecord:
     def path(self) -> Path:
         return self.run_dir / "run.json"
 
+    @property
+    def status(self) -> str | None:
+        return None if self._doc is None else self._doc["status"]
+
     def start(self) -> None:
+        """Begin an attempt (new run or resume of a failed one); a second call on a running record is a no-op."""
+        if self.status == "running":
+            return
         self.run_dir.mkdir(parents=True, exist_ok=True)
         now = now_utc()
         attempts, started_at = [], now
@@ -140,7 +156,12 @@ class RunRecord:
             attempts, started_at = prev["attempts"], prev["started_at"]
             if attempts and attempts[-1]["status"] == "running":   # previous process died without finishing
                 attempts[-1]["status"] = "interrupted"
-        attempts.append({"started_at": now, "finished_at": None, "status": "running", "failure": None})
+        # Each attempt keeps its own code and environment provenance: earlier units' shards came from it.
+        attempt_env = self.run_dir / f"environment.attempt-{len(attempts)}.json"
+        dump_json(self._env, attempt_env)
+        attempts.append({"started_at": now, "finished_at": None, "status": "running", "failure": None,
+                         "git_commit": self._static["git_commit"], "dirty_diff_hash": self._static["dirty_diff_hash"],
+                         "environment_path": attempt_env.name, "environment_sha256": sha256_file(attempt_env)})
         env_path = self.run_dir / "environment.json"
         dump_json(self._env, env_path)
         environment = {"path": env_path.name, "sha256": sha256_file(env_path),

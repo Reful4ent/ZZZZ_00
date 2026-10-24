@@ -152,3 +152,19 @@ def test_timed():
 def test_peak_memory_null_reason_without_psutil(monkeypatch):
     monkeypatch.setitem(sys.modules, "psutil", None)
     assert peak_memory_mb() == (None, "psutil_unavailable")
+
+
+def test_git_state_nested_untracked_repo(tmp_path):   # review P5-I5
+    def git(cwd, *a):
+        subprocess.run(["git", "-C", str(cwd), *a], check=True, capture_output=True)
+    git(tmp_path, "init", "-q"); git(tmp_path, "config", "user.email", "t@example.org"); git(tmp_path, "config", "user.name", "t")
+    (tmp_path / "a.txt").write_text("1", encoding="utf-8")
+    git(tmp_path, "add", "a.txt"); git(tmp_path, "commit", "-q", "-m", "x")
+    nested = tmp_path / "sub"
+    nested.mkdir(); git(nested, "init", "-q")
+    (nested / "x.txt").write_text("n", encoding="utf-8")
+    commit, dirty = git_state(tmp_path)
+    assert len(commit) == 40 and len(dirty) == 64
+    (tmp_path / "папка с пробелом").mkdir()
+    (tmp_path / "папка с пробелом" / "u.txt").write_text("u", encoding="utf-8")
+    assert git_state(tmp_path / "папка с пробелом")[1] not in (None, dirty)   # whole work tree, from a subdir
