@@ -44,8 +44,10 @@ def _gallery_sha256(ids) -> str:
 
 
 def evaluate_retrieval(gallery: EmbeddingSet, queries: EmbeddingSet, classes: pd.Series, params: dict,
-                       ids: dict, *, expected_gallery_ids, td: float | None = None) -> tuple[pd.DataFrame, dict]:
-    """ids: {"out_dir"}. expected_gallery_ids come from the frozen manifest; gallery_manifest.json is a record."""
+                       ids: dict, *, expected_gallery_ids, td: float | None = None,
+                       metric: str = "cosine") -> tuple[pd.DataFrame, dict]:
+    """ids: {"out_dir"}. expected_gallery_ids come from the frozen manifest; gallery_manifest.json is a record.
+    metric: the method's search metric ("raw_l2" for proxy_softmax_noL2)."""
     out = Path(ids["out_dir"])
     sha = _gallery_sha256(gallery.image_ids)
     if sha != _gallery_sha256(expected_gallery_ids):
@@ -57,7 +59,7 @@ def evaluate_retrieval(gallery: EmbeddingSet, queries: EmbeddingSet, classes: pd
     g_ids, q_ids = np.asarray(gallery.image_ids), np.asarray(queries.image_ids)
     g_cls, q_cls = classes.loc[g_ids].to_numpy(), classes.loc[q_ids].to_numpy()
     res = blocked_topk(queries.embeddings, q_ids, gallery.embeddings, g_ids, s["k"], s["block_q"],
-                       s["block_g"], s["d2_tol"], "cosine")
+                       s["block_g"], s["d2_tol"], metric)
     df, summ = retrieval_table(res, q_cls, g_ids, g_cls, no_positive_mask(q_ids, q_cls, g_ids, g_cls))
     if td is not None:
         df["y_hat"] = pd.array([int(d <= td) if v and not pd.isna(d) else None

@@ -37,6 +37,13 @@ def _main(module):
     return importlib.import_module(f"{module}.cli").main
 
 
+def _expcore_metric(argv):
+    """The expcore metric skeleton (spec TZ03 3.4 item 5): execute_run(query=True) behind run_cli."""
+    from expcore.cli_common import command_parser, execute_run, run_cli
+    return run_cli(lambda a: execute_run("metric", a.command, a, query=True), argv,
+                   parser=command_parser("metric", ("train", "embed", "search")))
+
+
 def _run_dir(world, module, profile="smoke"):
     cfg = load_config(world.cfg_path, module=module)
     return world.out_root / profile / module / make_run_id(module, profile, config_hash(cfg), cfg.seeds.seed)
@@ -52,7 +59,8 @@ def test_skeleton_returns_6(tmp_path, monkeypatch, mod, cmd, request):
     if mod == "metric":
         request.getfixturevalue("empty_metric_params")
     world = make_world(tmp_path, monkeypatch)
-    assert _main(mod)(world.argv(*cmd)) == 6
+    main = _expcore_metric if mod == "metric" else _main(mod)
+    assert main(world.argv(*cmd)) == 6
     run = load_json(_run_dir(world, mod) / "run.json")
     assert run["status"] == "failed" and run["failure"]["type"] == "NotImplementedAlgorithm"
     assert run["command"] == cmd[0]
@@ -90,7 +98,7 @@ def test_metric_search_runs_queries(tmp_path, monkeypatch, empty_metric_params):
     from tests.fakes import BatchQueryPredictor
     world = make_world(tmp_path, monkeypatch)
     monkeypatch.setitem(registry._ALGORITHMS, ("metric", "fake"), BatchQueryPredictor())
-    assert _main("metric")(world.argv("search")) == 0
+    assert _expcore_metric(world.argv("search")) == 0
     pred = read_predictions(_run_dir(world, "metric"))
     assert pred.pair_id.isna().all() and pred.query_id.is_unique and set(pred.timing_mode) == {"amortized_batch"}
 
@@ -163,8 +171,8 @@ def test_completed_run_of_another_command_refused(tmp_path, monkeypatch, empty_m
     from tests.fakes import BatchQueryPredictor
     world = make_world(tmp_path, monkeypatch)
     monkeypatch.setitem(registry._ALGORITHMS, ("metric", "fake"), BatchQueryPredictor())
-    assert _main("metric")(world.argv("train")) == 0
-    assert _main("metric")(world.argv("embed")) == 5   # same run_id (D-08 has no command): not silently skipped
+    assert _expcore_metric(world.argv("train")) == 0
+    assert _expcore_metric(world.argv("embed")) == 5   # same run_id (D-08 has no command): not silently skipped
 
 
 def test_non_utf8_stdout_does_not_crash(monkeypatch):   # review P6-I5: cp1251 console, redirected output

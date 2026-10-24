@@ -13,9 +13,11 @@ from expcore.io import dump_json, write_parquet
 from expcore.seeding import init_seeds, stream
 from metric.checkpoint import (export_best, load_progress, read_state, restore_full, save_full,
                                write_failure)
+from metric.disclaimers import disclaimers
 from metric.data import (apply_class_subset, apply_per_class_limit, build_proxy_index,
                          check_disjoint, sampler_exclusions, steps_per_epoch)
 from metric.errors import RunStop
+from metric.memory import memory_breakdown
 from metric.methods import PROXY_STEP, UNTRAINABLE, build_method, make_embedder
 from metric.model import build_encoder
 from metric.pipeline import eval_arrays, train_dataset
@@ -36,8 +38,6 @@ EPOCH_SCHEMA = {
 # graph-side stops: tf.debugging.Assert messages start with the failure type (metric.losses)
 GRAPH_FAILURES = ("INVALID_EMBEDDING_NORM", "INVALID_PROXY_NORM", "SAMPLER_ERROR",
                   "DISTANCE_RANGE_VIOLATION")
-BASE_MINIMAL_NOTE = ("Вариант без очередей измеряет стоимость обучения; его меньшие накладные "
-                     "расходы не сравниваются с калибровкой без этого пояснения.")
 
 
 @dataclass
@@ -170,6 +170,9 @@ def _run(ctx: TrainContext, ckpt: Path | None = None) -> dict:
     cfg = StepConfig(kappa=p["proxy"]["kappa"], lam=cal["lambda"], n_warm=cal["n_warm"],
                      eps_z=p["embed"]["eps_z"], eps_p=p["proxy"]["eps_p"])
     proxy_step = ctx.method in PROXY_STEP
+    subset = (n_cls, len(train), p["train"]["epochs"] * spe)  # actual sizes (spec 1.6 item 9)
+    n_params = sum(int(np.prod(v.shape)) for v in encoder.trainable_variables)
+    memory = memory_breakdown(n_cls, cal["K"] if queues is not None else 0, d, n_params)
     if proxy_step:
         step_fn = make_proxy_step(encoder, P, queues, optimizer, cfg)
     else:
@@ -240,7 +243,7 @@ def _run(ctx: TrainContext, ckpt: Path | None = None) -> dict:
                                        queues.age_stats(gstep)["mean_age"])
                 logger.log({
                     "run_id": run_id, "global_step": gstep, "epoch": epoch, "step_in_epoch": k,
-                    "lambda": float(cal["lambda"]), "L_base": float(out["L_base"]),
+                    "lambda": float(cal["lambda"]) if proxy_step else 0.0, "L_base": float(out["L_base"]),
                     "L_dev": float(out["L_dev"]), "L_total": float(out["L_total"]),
                     "n_cval": None if queues is None else int(out["n_cval"]), **stats,
                     "step_time_ms": (t2 - t1) * 1e3, "data_time_ms": (t1 - t0) * 1e3})
@@ -282,7 +285,7 @@ def _run(ctx: TrainContext, ckpt: Path | None = None) -> dict:
                     "n_valid_queries": row["n_valid_queries"],
                     "selection_rule": "max_val_recall_at_1_tie_earliest",
                     "encoder_path": "checkpoints/best/encoder.keras", "weights_hash": whash,
-                    "disclaimers": [BASE_MINIMAL_NOTE] if proxy_step and queues is None else [],
+                    "disclaimers": disclaimers(ctx.method, p, subset),
                 }, run_dir / "best_checkpoint.json")
             save()
     except (RunStop, tf.errors.InvalidArgumentError, tf.errors.ResourceExhaustedError) as e:
@@ -301,4 +304,4 @@ def _run(ctx: TrainContext, ckpt: Path | None = None) -> dict:
         logger.finalize()
         result = {"status": "completed"}
     return {**result, **best_fields(), "total_steps": gstep + 1, "deterministic_ops": True,
-            "queue_checks": queue_checks}
+            "queue_checks": queue_checks, "memory": memory}
