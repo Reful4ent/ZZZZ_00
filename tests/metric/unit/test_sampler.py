@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 from scipy.stats import chisquare
 
+from metric.augment import resized_shape
 from metric.data import build_proxy_index
 from metric.errors import RunStop
 from metric.sampler import BatchSampler
@@ -51,17 +52,18 @@ def test_batch_pure_function():
 
 
 def test_crop_offsets_valid():
-    s = make(imgs(40))
+    df = imgs(40)
+    s = make(df)
     for t in range(50):
         b = s.batch(t)
         for iid, (y, x) in zip(b.image_ids, b.crop_yx):
-            h, w = s._resized(iid)
+            h, w = resized_shape(df.loc[df.image_id == iid, "height"].item(), df.loc[df.image_id == iid, "width"].item(), 256)
             assert min(h, w) == 256 and 0 <= y <= h - 224 and 0 <= x <= w - 224
-    sc = make(imgs(40), aug=False)
+    sc = make(df, aug=False)
     c = sc.batch(3)
     assert not c.flip.any()
     for iid, (y, x) in zip(c.image_ids, c.crop_yx):
-        h, w = sc._resized(iid)
+        h, w = resized_shape(df.loc[df.image_id == iid, "height"].item(), df.loc[df.image_id == iid, "width"].item(), 256)
         assert (y, x) == ((h - 224) // 2, (w - 224) // 2)
 
 

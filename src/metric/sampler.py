@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 
 from expcore.seeding import stream
+from metric.augment import resized_shape
 from metric.errors import RunStop
 
 
@@ -33,12 +34,6 @@ class BatchSampler:
         self._imgs = {c: g["image_id"].tolist() for c, g in df.groupby("class_id")}
         self._wh = dict(zip(df["image_id"], zip(df["width"], df["height"])))
 
-    def _resized(self, image_id: str) -> tuple[int, int]:
-        """(H', W') after aspect-preserving resize of the short side."""
-        w, h = self._wh[image_id]
-        s = self.resize_short / min(w, h)
-        return (self.resize_short, round(w * s)) if h <= w else (round(h * s), self.resize_short)
-
     def batch(self, step: int) -> BatchSpec:
         rng = stream(self.seed, "sampler", step)
         drawn = rng.choice(len(self._cids), size=self.classes, replace=False)
@@ -53,7 +48,8 @@ class BatchSampler:
         flip = np.zeros(len(imgs), dtype=bool)
         aug = stream(self.seed, "augment", step) if self.train_augment else None
         for pos, iid in enumerate(imgs):
-            h, w = self._resized(iid)
+            w0, h0 = self._wh[iid]
+            h, w = resized_shape(h0, w0, self.resize_short)
             if aug is None:
                 yx[pos] = ((h - self.crop) // 2, (w - self.crop) // 2)
             else:
