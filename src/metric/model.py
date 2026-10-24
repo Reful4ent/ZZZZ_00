@@ -31,6 +31,7 @@ def build_encoder(weights, input_size, embedding_dim, dense_seed) -> Encoder:
         kernel_initializer=tf.keras.initializers.GlorotUniform(seed=dense_seed))
     enc = Encoder(backbone, dense)
     enc.embed_raw(tf.zeros((1, input_size, input_size, 3)))  # build variables
+    enc.built = True  # Encoder has no call(); Keras saving needs the flag
     return enc
 
 
