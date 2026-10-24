@@ -117,9 +117,12 @@ def run_training(ctx: TrainContext) -> dict:
 def resume_training(ctx: TrainContext, checkpoint_dir: Path) -> dict:
     """Continue from the full checkpoint at global_step + 1 (spec 7.5); ctx is the run's config."""
     st = read_state(checkpoint_dir)
-    for k in ("config_hash", "manifest_hash", "weights_sha256"):
-        if st[k] != getattr(ctx, k):
-            raise ConfigError(f"resume: {k} {getattr(ctx, k)!r} != checkpoint {st[k]!r}")
+    expected = {"config_hash": ctx.config_hash, "manifest_hash": ctx.manifest_hash,
+                "weights_sha256": ctx.weights_sha256, "seed": ctx.seed,
+                "sampler_version": SAMPLER_VERSION}  # batches depend on (seed, sampler version)
+    for k, v in expected.items():
+        if st[k] != v:
+            raise ConfigError(f"resume: {k} {v!r} != checkpoint {st[k]!r}")
     return _run(ctx, Path(checkpoint_dir))
 
 

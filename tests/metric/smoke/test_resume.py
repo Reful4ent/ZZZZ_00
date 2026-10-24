@@ -79,11 +79,16 @@ def test_completed_parts_not_rewritten(runs):
     assert _fingerprint(runs["b"] / "training_steps/part-001.parquet") == runs["part1"]
 
 
-@pytest.mark.parametrize("field", ["config_hash", "manifest_hash", "weights_sha256"])
-def test_resume_rejects_mismatch(runs, field):
+@pytest.mark.parametrize("field", ["config_hash", "manifest_hash", "weights_sha256", "seed",
+                                   "sampler_version"])
+def test_resume_rejects_mismatch(runs, field, monkeypatch):
+    import metric.train as train
     from expcore.errors import ConfigError
-    from metric.train import resume_training
     from tests.metric.smoke._resume_entry import context
     ctx = context(runs["b"], **{field: "edited"})  # e.g. params.calibration.lambda changed
+    if field == "seed":
+        ctx.seed = 8
+    if field == "sampler_version":  # sampler code changed between attempts
+        monkeypatch.setattr(train, "SAMPLER_VERSION", "p3-sampler-v2")
     with pytest.raises(ConfigError, match=field):
-        resume_training(ctx, runs["b"] / "checkpoints/last")
+        train.resume_training(ctx, runs["b"] / "checkpoints/last")
