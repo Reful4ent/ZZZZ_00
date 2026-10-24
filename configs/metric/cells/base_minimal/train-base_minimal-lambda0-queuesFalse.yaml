@@ -1,0 +1,161 @@
+algorithms:
+  base_minimal: base_minimal_v1
+data_modes:
+  oracle:
+    enabled: false
+    reason: null
+datasets:
+  hpatches:
+    categories: null
+    dataset_id: hpatches
+    expected: {}
+    fixture: false
+    manifest_version: v1
+    n_validation: null
+    provenance:
+      archive_name: hpatches-sequences-release.tar.gz
+      download_date: null
+      license: see provider
+      license_file: null
+      source_url: https://github.com/hpatches/hpatches-dataset
+  kadid10k:
+    categories: null
+    dataset_id: kadid10k
+    expected:
+      derivatives: 10125
+      originals: 81
+    fixture: false
+    manifest_version: v1
+    n_validation: 20
+    provenance:
+      archive_name: kadid10k.zip
+      download_date: null
+      license: see provider
+      license_file: null
+      source_url: https://database.mmsp-kn.de/kadid-10k-database.html
+  mvtec_ad:
+    categories:
+    - carpet
+    - leather
+    - tile
+    - wood
+    dataset_id: mvtec_ad
+    expected: {}
+    fixture: false
+    manifest_version: v1
+    n_validation: null
+    provenance:
+      archive_name: mvtec_anomaly_detection.tar.xz
+      download_date: null
+      license: CC BY-NC-SA 4.0
+      license_file: null
+      source_url: https://www.mvtec.com/company/research/datasets/mvtec-ad
+  sop:
+    categories: null
+    dataset_id: sop
+    expected:
+      products: 22634
+      test_images: 60502
+      train_images: 59551
+    fixture: false
+    manifest_version: v1
+    n_validation: null
+    provenance:
+      archive_name: Stanford_Online_Products.zip
+      download_date: null
+      license: see provider
+      license_file: null
+      source_url: https://cvgl.stanford.edu/projects/lifted_struct/
+decision:
+  criterion_id: null
+  tie_rule: '>='
+determinism:
+  deterministic_ops: true
+  numpy_threads: 1
+  opencv_threads: 1
+inputs:
+  color_order: bgr
+  pair_columns:
+  - pair_id
+  - query_id
+  - reference_id
+  - relation_id
+logging:
+  dir: logs
+  level: INFO
+params:
+  batch:
+    classes: 16
+    per_class: 2
+  calibration:
+    K: 32
+    lambda: 0
+    n_warm: 4
+    queues: false
+  checkpoint:
+    every_steps: null
+  data:
+    class_subset: null
+    cohort_min_images: null
+    per_class_limit: null
+  degradation: none
+  embed:
+    eps_z: 1.0e-12
+  input:
+    crop: 224
+    flip_p: 0.5
+    normalize_l2: true
+    resize_short: 256
+    train_augment: true
+  loss:
+    margin: null
+  model:
+    backbone: resnet50
+    bn_mode: frozen_stats_trainable_affine
+    embedding_dim: 128
+    weights: imagenet
+    weights_sha256: 66c8b43daff3fcc15bc4f30e3d2a167e21a14d9c9598a5394e5516471f4af504
+  optimizer:
+    beta_1: 0.9
+    beta_2: 0.999
+    epsilon: 1.0e-07
+    lr: 0.0001
+    name: adam
+  pairs:
+    max_attempts: 100
+    max_pos_per_class: 20
+  proxy:
+    eps_p: 1.0e-12
+    init: normal_then_normalize
+    kappa: 16
+  queue:
+    check_every: 1000
+    sum_tol: 1.0e-06
+  search:
+    block_g: 8192
+    block_q: 1024
+    d2_tol: 1.0e-06
+    k:
+    - 1
+    - 5
+    - 10
+  threshold:
+    criterion_id: max_recall_at_fpr_le_0.05
+    fpr_max: 0.05
+  train:
+    epochs: 40
+    precision: fp32
+    steps_per_epoch: auto
+paths:
+  data_root: data
+  manifest_dir: data/manifests
+  out_root: out
+profile: pilot
+protocol_version: '1'
+runner:
+  chunk_size: 256
+schema_version: '1'
+seeds:
+  seed: 11
+  seeds:
+  - 11
