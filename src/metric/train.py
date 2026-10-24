@@ -146,7 +146,7 @@ def run_training(ctx: TrainContext, resume_state: dict | None = None) -> dict:
     logger = StepLogger(run_dir)
     (run_dir / "queue_state").mkdir(exist_ok=True)
     batch_frames, epoch_batches, epoch_rows, queue_checks = [], [], [], []
-    best, sampler, cur, epoch, gstep = None, None, None, 0, -1
+    best, sampler, cur, epoch, gstep, losses = None, None, None, 0, -1, []
 
     def check(step):
         c = _check_drift(queues, tol, step)
@@ -161,7 +161,8 @@ def run_training(ctx: TrainContext, resume_state: dict | None = None) -> dict:
         save_full(run_dir / "checkpoints" / "last", encoder, P, queues, optimizer, {
             "epoch": epoch, "global_step": gstep, "seed": seed, "sampler_version": SAMPLER_VERSION,
             **best_fields(), "config_hash": ctx.config_hash, "manifest_hash": ctx.manifest_hash,
-            "weights_sha256": ctx.weights_sha256})
+            "weights_sha256": ctx.weights_sha256},
+            steps=logger.rows, progress={"losses": np.asarray(losses, np.float64).tolist()})
 
     try:
         sampler = BatchSampler(proxy_index, train, seed, b["classes"], b["per_class"],
@@ -208,6 +209,7 @@ def run_training(ctx: TrainContext, resume_state: dict | None = None) -> dict:
             t_val = time.perf_counter()
             vrow = validate_epoch(encoder, ctx.method, val, ctx.store, p)
             lm = np.mean(np.asarray(losses, np.float64), axis=0)
+            losses = []  # epoch flushed: the epoch-end checkpoint carries no partial progress
             row = {"run_id": run_id, "epoch": epoch, "global_step": gstep, **vrow,
                    "L_base_mean": lm[0], "L_dev_mean": lm[1], "L_total_mean": lm[2],
                    "epoch_time_s": epoch_time, "val_time_s": time.perf_counter() - t_val,

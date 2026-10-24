@@ -7,6 +7,7 @@ import tensorflow as tf
 from expcore.io import dump_json, load_json
 from expcore.seeding import capture_rng_state
 from metric.model import weights_hash
+from metric.steplog import read_steps, write_steps
 
 STATE_KEYS = ("epoch", "global_step", "seed", "sampler_version", "best_epoch",
               "best_correct_at_1", "config_hash", "manifest_hash", "weights_sha256")
@@ -23,17 +24,33 @@ def _sibling(d: Path, suffix: str) -> Path:
     return d.with_name(d.name + suffix)
 
 
-def save_full(dir: Path, encoder, P, queues, optimizer, state: dict) -> None:
-    """Write into `<dir>.tmp`, then swap: dir -> .old, .tmp -> dir, drop .old (Windows-safe)."""
+def _existing(d: Path) -> Path:
+    d = Path(d)
+    if not d.exists() and _sibling(d, ".old").exists():  # crash between the two swap renames
+        return _sibling(d, ".old")
+    return d
+
+
+def save_full(dir: Path, encoder, P, queues, optimizer, state: dict, steps: list = (),
+              progress: dict | None = None) -> None:
+    """Write into `<dir>.tmp`, then swap: dir -> .old, .tmp -> dir, drop .old (Windows-safe).
+
+    `steps`/`progress`: the unfinished epoch's step rows and loss accumulators (empty at epoch end),
+    saved atomically with the weights so a resumed epoch is complete.
+    """
     d = Path(dir)
     tmp, old = _sibling(d, ".tmp"), _sibling(d, ".old")
-    shutil.rmtree(tmp, ignore_errors=True)  # stale tmp of an interrupted save
+    if tmp.exists():  # stale tmp of an interrupted save; a failure to remove it must surface
+        shutil.rmtree(tmp)
     tmp.mkdir(parents=True)
     _checkpoint(encoder, P, queues, optimizer).write(str(tmp / "ckpt"))
+    write_steps(list(steps), tmp / "partial_steps.parquet")
+    dump_json(progress or {}, tmp / "epoch_progress.json")
     dump_json({k: state[k] for k in STATE_KEYS}, tmp / "state.json")
     dump_json(capture_rng_state(), tmp / "rng_state.json")
     if d.exists():
-        shutil.rmtree(old, ignore_errors=True)
+        if old.exists():  # left by a cleanup that failed (e.g. a file handle held on Windows)
+            shutil.rmtree(old)
         d.rename(old)
     tmp.rename(d)
     shutil.rmtree(old, ignore_errors=True)
@@ -41,11 +58,15 @@ def save_full(dir: Path, encoder, P, queues, optimizer, state: dict) -> None:
 
 def restore_full(dir: Path, encoder, P, queues, optimizer) -> dict:
     """Restore all §7.4 state in place (optimizer must already be built); returns state.json."""
-    d = Path(dir)
-    if not d.exists() and _sibling(d, ".old").exists():  # crash between the two swap renames
-        d = _sibling(d, ".old")
+    d = _existing(dir)
     _checkpoint(encoder, P, queues, optimizer).read(str(d / "ckpt")).assert_consumed()
     return load_json(d / "state.json")
+
+
+def load_progress(dir: Path) -> tuple[list[dict], dict]:
+    """(step rows, accumulators) of the unfinished epoch saved by save_full, to seed StepLogger.rows."""
+    d = _existing(dir)
+    return read_steps(d / "partial_steps.parquet"), load_json(d / "epoch_progress.json")
 
 
 def export_best(dir: Path, encoder, preprocess: dict) -> str:

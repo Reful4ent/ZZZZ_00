@@ -79,6 +79,8 @@ def test_train_loop_smoke(smoke):
     st = json.loads((d / "checkpoints/last/state.json").read_text(encoding="utf-8"))
     assert (st["epoch"], st["global_step"], st["sampler_version"]) == (2, 5, "p3-sampler-v1")
     assert st["best_epoch"] == best["epoch"]
+    from metric.checkpoint import load_progress
+    assert load_progress(d / "checkpoints/last") == ([], {"losses": []})  # epoch end: flushed
     assert [c["global_step"] for c in smoke["result"]["queue_checks"]] == [2, 5]
     for f in ("proxy_index.parquet", "sampler_exclusions.parquet", "queue_state/epoch-001.parquet",
               "queue_state/epoch-002.parquet", "training_steps/part-002.parquet"):

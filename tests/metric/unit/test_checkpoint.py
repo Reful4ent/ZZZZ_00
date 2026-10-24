@@ -70,6 +70,15 @@ def test_interrupted_save_keeps_last(objs, tmp_path, monkeypatch):
     assert not (tmp_path / "last.tmp").exists() and not (tmp_path / "last.old").exists()
     d.rename(tmp_path / "last.old")  # crash between the two renames of the swap
     assert ck.restore_full(d, *b)["global_step"] == 7
+    real_rmtree = ck.shutil.rmtree
+    with monkeypatch.context() as mp:  # best-effort cleanup fails silently (Windows file handle)
+        mp.setattr(ck.shutil, "rmtree",
+                   lambda p, ignore_errors=False: None if ignore_errors else real_rmtree(p))
+        ck.save_full(d, *a, {**STATE, "global_step": 8})
+        assert (tmp_path / "last.old").exists()  # stale .old left behind
+        ck.save_full(d, *a, {**STATE, "global_step": 9})
+    real_rmtree(tmp_path / "last.old")
+    assert ck.restore_full(d, *b)["global_step"] == 9
 
 
 def test_check_drift_raises_with_details(objs):
@@ -116,7 +125,8 @@ def _failing_run(tmp_path, params, fail_at, inject):
 def test_invalid_norm_stop_recorded(tmp_path):
     pytest.importorskip("tensorflow")
     import tensorflow as tf
-    from metric.checkpoint import restore_full
+    from metric.checkpoint import load_progress, restore_full
+    from metric.steplog import read_steps
     p = smoke_params(lam=0.1, epochs=2, steps_per_epoch=3)
     p["checkpoint"]["every_steps"] = 2
     nan = lambda fn, x, y, t: fn(tf.fill(tf.shape(x), float("nan")), y, t)  # noqa: E731
@@ -132,6 +142,9 @@ def test_invalid_norm_stop_recorded(tmp_path):
     assert restore_full(d / "checkpoints/last", *calls[0]["objs"])["global_step"] == 3
     part = pd.read_parquet(d / "training_steps/part-002.parquet")
     assert list(part["global_step"]) == [3]  # partial epoch rows are kept
+    rows, prog = load_progress(d / "checkpoints/last")  # epoch 2 progress saved with step 3
+    assert rows == read_steps(d / "training_steps/part-002.parquet")
+    assert prog["losses"] == [[part["L_base"][0], part["L_dev"][0], part["L_total"][0]]]
     assert [c["global_step"] for c in res["queue_checks"]] == [1, 2, 3]
 
 

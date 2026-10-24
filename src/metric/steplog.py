@@ -43,6 +43,18 @@ def step_stats(p, n=None, mu=None, K=None, mean_age=None) -> dict:
     return row
 
 
+def write_steps(rows, path: Path) -> None:
+    """rows: list of dicts or a DataFrame with STEP_COLUMNS."""
+    write_parquet(pd.DataFrame(rows, columns=STEP_COLUMNS), path, nullable=_NULLABLE,
+                  schema=STEP_SCHEMA)
+
+
+def read_steps(path: Path) -> list[dict]:
+    """Rows as written by write_steps; nulls come back as None (not NaN)."""
+    df = pd.read_parquet(path)
+    return df.astype(object).where(df.notna(), None).to_dict("records")
+
+
 class StepLogger:
     def __init__(self, out_dir: Path) -> None:
         self.out_dir = Path(out_dir)
@@ -53,18 +65,14 @@ class StepLogger:
     def log(self, row: dict) -> None:
         self.rows.append(row)
 
-    def _write(self, df: pd.DataFrame, path: Path) -> None:
-        write_parquet(df, path, nullable=_NULLABLE, schema=STEP_SCHEMA)
-
     def end_epoch(self, epoch: int) -> None:
-        self._write(pd.DataFrame(self.rows, columns=STEP_COLUMNS),
-                    self.parts / f"part-{epoch:03d}.parquet")
+        write_steps(self.rows, self.parts / f"part-{epoch:03d}.parquet")
         self.rows = []
 
     def finalize(self) -> None:
         df = pd.concat([pd.read_parquet(p) for p in sorted(self.parts.glob("part-*.parquet"))],
                        ignore_index=True)
-        self._write(df, self.out_dir / "training_steps.parquet")
+        write_steps(df, self.out_dir / "training_steps.parquet")
 
 
 def queue_snapshot(queues, P, step) -> pd.DataFrame:
