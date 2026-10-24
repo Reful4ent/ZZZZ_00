@@ -79,7 +79,9 @@ def select(exp_config, path_overrides=None):
     import experiments.cli  # noqa: F401  (registers the experiments params schema)
     from experiments.plan import make_plan
     from expcore.config import config_hash, load_config
-    from expcore.errors import DataValidationError
+    import json
+
+    from expcore.errors import DataValidationError, ProtocolViolationError
     from expcore.io import dump_json, load_json
     from expcore.runlog import now_utc
     from metric.disclaimers import ALWAYS
@@ -115,8 +117,7 @@ def select(exp_config, path_overrides=None):
         raise DataValidationError(f"select: {e}") from e
     entry = cfg.params.runs[best.order]
     out = cfg.paths.out_root / cfg.profile / "metric" / "select" / exp_config.stem / "selected_config.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    dump_json({
+    doc = {
         "experiment_id": exp_config.stem, "protocol_version": cfg.protocol_version, "profile": cfg.profile,
         "grid": [c.params for c in cands],
         "candidates": [{"params": t["params"], "mean_val_recall_at_1": t["mean_val_recall_at_1"],
@@ -126,5 +127,12 @@ def select(exp_config, path_overrides=None):
         "tie_rule": TIE_RULE, "selected_params": best.params, "selected_config": entry.config,
         "selected_config_hash": config_hash(load_config(exp_config.parent / entry.config, module="metric")),
         "created_at": now_utc(), "disclaimers": notes,
-    }, out)
+    }
+    if out.exists():   # write-once: a selection is never silently replaced
+        old = load_json(out)
+        if {k: v for k, v in old.items() if k != "created_at"} !=                 json.loads(json.dumps({k: v for k, v in doc.items() if k != "created_at"})):
+            raise ProtocolViolationError(f"{out}: a different selection is already recorded")
+        return out
+    out.parent.mkdir(parents=True, exist_ok=True)
+    dump_json(doc, out)
     return out

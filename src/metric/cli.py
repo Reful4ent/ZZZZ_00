@@ -141,18 +141,31 @@ class _LoadedEncoder:
 
 
 def _embed(args: argparse.Namespace) -> None:
+    """Trained methods: a stage run per --split. Untrainable methods without --split: the base run of the config
+    (as `experiments plan` names it) with embeddings-<split>.npz for every split the profile allows."""
+    from expcore.loaders import accessible_splits
     from metric.runctx import completed_source, prepare_run
     deterministic = _enable_tf_determinism()
     cfg = load_config(args.config, module=MODULE, path_overrides=path_overrides(args))
-    stage = {"command": "embed", "split": args.split, "degradation_id": cfg.params.degradation}
+    trained = next(iter(cfg.algorithms), None) not in UNTRAINABLE
+    if args.split is None and trained:
+        raise ConfigError("embed --split is required for a trained model")
+    stage = None if args.split is None else {"command": "embed", "split": args.split,
+                                             "degradation_id": cfg.params.degradation}
     run = prepare_run("embed", args, deterministic_ops=deterministic, stage=stage)
     if _completed(run):
         return
-    trained = run.method_id not in UNTRAINABLE
     source = completed_source(run.cfg) if trained else None
-    run.open_split(args.split)
+    if args.split is None:
+        fixture = all(ds.fixture for ds in run.cfg.datasets.values())
+        splits = {s: run.run_dir / f"embeddings-{s}.npz"
+                  for s in accessible_splits(run.cfg.profile, fixture=fixture, splits={"validation", "test"})}
+    else:
+        splits = {args.split: run.run_dir / "embeddings.npz"}
 
     def body(run):
+        for split in splits:
+            run.open_split(split)   # after record.start(), before any image of the split is loaded
         import pandas as pd
         import tensorflow as tf
         from metric.embed import embed_split, save_embeddings
@@ -164,9 +177,10 @@ def _embed(args: argparse.Namespace) -> None:
             encoder = _LoadedEncoder(tf.keras.models.load_model(source / "checkpoints" / "best" / "encoder.keras"))
         else:
             method, encoder = build_method(run.method_id, p, 0, seed), None
-        es = embed_split(make_embedder(method, encoder, p), run.images, args.split, run.store, p,
-                         p["degradation"], seed, run.run_dir / "embeddings", run.manifest.manifest_hash)
-        save_embeddings(run.run_dir / "embeddings.npz", es)
+        for split, out in splits.items():
+            es = embed_split(make_embedder(method, encoder, p), run.images, split, run.store, p,
+                             p["degradation"], seed, run.run_dir / "embeddings", run.manifest.manifest_hash)
+            save_embeddings(out, es)
     _execute(run, body)
 
 
@@ -189,6 +203,7 @@ def _search(args: argparse.Namespace) -> None:
     from expcore.thresholds import load_threshold
     from metric.embed import load_embeddings
     from metric.evaluate import evaluate_pairs, evaluate_retrieval, pair_prediction_rows, query_prediction_rows
+    from metric.pairs import pairs_summary
     from metric.runctx import prepare_run
     gallery, queries = load_embeddings(args.gallery), load_embeddings(args.queries)
     split = queries.split
@@ -201,15 +216,19 @@ def _search(args: argparse.Namespace) -> None:
     run = prepare_run("search", args, deterministic_ops=None, stage=stage)
     if _completed(run):
         return
+    if args.pairs and run.method_id in RAW_L2_METHODS:
+        raise ConfigError(f"search --pairs: pair scores are cosine (spec 9.6); {run.method_id} searches raw L2")
     for name, es in (("gallery", gallery), ("queries", queries)):
         if es.method_id != run.method_id or es.manifest_hash != run.manifest.manifest_hash:
             raise ConfigError(f"--{name}: embeddings of {es.method_id!r} / manifest {es.manifest_hash[:12]}, "
                               f"this config is {run.method_id!r} / {run.manifest.manifest_hash[:12]}")
+    if gallery.weights_hash != queries.weights_hash:
+        raise ConfigError("--gallery and --queries come from different encoders (weights_hash differs)")
     if gallery.split != split or gallery.degradation_id != "none":
         raise ConfigError(f"--gallery: an undegraded gallery of split {split!r} is required (spec 4.4, 9.7)")
-    run.open_split(split)
 
     def body(run):
+        run.open_split(split)   # after record.start(): test is never opened without a run attempt
         p = run.params
         p_eval = {**p, "search": {**p["search"], "k": max(p["search"]["k"])}}
         ids = {"out_dir": run.run_dir, "run_id": run.run_id, "method_id": run.method_id,
@@ -225,6 +244,7 @@ def _search(args: argparse.Namespace) -> None:
             own = run.run_dir / "thresholds.json"
             path = own if split == "validation" else (Path(args.thresholds) if args.thresholds else None)
             sc = evaluate_pairs(queries, pairs, split, p, path, ids=ids)
+            dump_json(pairs_summary(pairs, run.images), run.run_dir / "p3_pairs_summary.json")   # M-D30
             if split == "validation":
                 td = -load_threshold(own).value
         classes = run.images.set_index("image_id")["class_id"]
@@ -266,7 +286,8 @@ def _parser() -> argparse.ArgumentParser:
     r.add_argument("--out-root", type=Path)
     r.add_argument("--protocol-registry", type=Path, default=DEFAULT_REGISTRY)
     e = add_common_args(sub.add_parser("embed", help="embed a split with the best encoder of the train run"))
-    e.add_argument("--split", required=True, choices=("validation", "test"))
+    e.add_argument("--split", choices=("validation", "test"),
+                   help="required for trained models; untrainable methods without it embed every allowed split")
     s = add_common_args(sub.add_parser("search", help="blocked search, Recall@k; --pairs: pair scores, tD"))
     s.add_argument("--gallery", type=Path, required=True, help="embeddings.npz of the gallery split")
     s.add_argument("--queries", type=Path, required=True, help="embeddings.npz of the queries")

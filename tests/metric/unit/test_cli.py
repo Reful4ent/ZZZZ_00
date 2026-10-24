@@ -5,7 +5,6 @@ import sys
 
 import pytest
 
-from expcore import registry
 from expcore.cli_common import command_parser, execute_run
 from expcore.errors import NotImplementedAlgorithm
 from expcore.io import load_json
@@ -178,3 +177,62 @@ def test_select_refuses_failed_runs(tmp_path, monkeypatch, capsys):
     code, out, planned = _select(world, [5, 5], status="failed")
     assert code == 3 and not out.exists()
     assert planned[0].run_id in capsys.readouterr().err
+
+
+def _npz(world, name, *, method="proxy_cal", wh="a" * 64, split="validation"):
+    import numpy as np
+    from metric.embed import EmbeddingSet, save_embeddings
+    m = load_manifest(world.out_root / "manifests", "v1")
+    ids = sorted(m.images.loc[(m.images.dataset_id == "sop") & (m.images.split == split), "image_id"])
+    z = np.eye(len(ids), 4, dtype=np.float32) + 0.5
+    path = world.root / name
+    save_embeddings(path, EmbeddingSet(z / np.linalg.norm(z, axis=1, keepdims=True), np.array(ids), wh, split,
+                                       "none", method, m.manifest_hash))
+    return str(path)
+
+
+def _stage_dirs(world):
+    return list((world.out_root / "smoke" / "metric").glob("*/stage.json"))
+
+
+def test_search_refuses_mixed_encoders(tmp_path, monkeypatch):
+    world = metric_world(tmp_path, monkeypatch)
+    g, q = _npz(world, "g.npz"), _npz(world, "q.npz", wh="b" * 64)
+    assert _main(world.argv("search", "--gallery", g, "--queries", q)) == 2
+    assert not _stage_dirs(world)
+
+
+def test_search_pairs_refused_for_raw_l2(tmp_path, monkeypatch):
+    world = metric_world(tmp_path, monkeypatch, method="proxy_softmax_noL2")
+    g = _npz(world, "g.npz", method="proxy_softmax_noL2")
+    assert _main(world.argv("search", "--gallery", g, "--queries", g, "--pairs")) == 2
+    assert not _stage_dirs(world)
+
+
+def test_untrainable_embed_is_the_planned_base_run(tmp_path, monkeypatch):
+    import experiments.cli  # noqa: F401
+    from expcore.config import load_config
+    from experiments.plan import make_plan
+    from tests.conftest import write_cfg
+    world = metric_world(tmp_path, monkeypatch, method="rgb_hist")
+    exp = write_cfg({**world.cfg_dict, "algorithms": {},
+                     "params": {"runs": [{"module": "metric", "command": "embed", "config": "cfg.yaml"}]}},
+                    tmp_path / "e4_fixed.yaml")
+    (planned, text), = make_plan(load_config(exp, module="experiments"), tmp_path)
+    cell = tmp_path / "planned.yaml"
+    cell.write_text(text, encoding="utf-8")
+    assert _main(["embed", "--config", str(cell), "--protocol-registry", str(world.registry_path)]) == 0
+    run_dir = world.out_root / "smoke" / "metric" / planned.run_id
+    assert (run_dir / "_SUCCESS").exists() and load_json(run_dir / "run.json")["command"] == "embed"
+    assert (run_dir / "embeddings-validation.npz").exists() and (run_dir / "embeddings-test.npz").exists()
+
+
+def test_select_is_write_once(tmp_path, monkeypatch):
+    world = metric_world(tmp_path, monkeypatch, build=False)
+    code, out, planned = _select(world, [4, 6])
+    assert code == 0 and _main(["select", "--config", str(world.root / "tune.yaml")]) == 0   # same: no-op
+    best = world.out_root / "smoke" / "metric" / planned[0].run_id / "best_checkpoint.json"
+    best.write_text(best.read_text(encoding="utf-8").replace('"val_correct_at_1": 4', '"val_correct_at_1": 9'),
+                    encoding="utf-8")
+    assert _main(["select", "--config", str(world.root / "tune.yaml")]) == 5
+    assert load_json(out)["selected_params"] == {"lambda": 0.1}

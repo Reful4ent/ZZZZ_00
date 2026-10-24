@@ -85,6 +85,13 @@ def test_e2e_smoke(tmp_path, monkeypatch, capsys):
     for d, split in ((val, "validation"), (test, "test")):
         for name in ("retrieval.parquet", "retrieval_summary.json", "pair_scores.parquet"):
             assert (d / name).exists(), name
+        assert pd.read_parquet(d / "retrieval.parquet").columns.tolist() == [
+            "run_id", "method_id", "split", "degradation_id", "query_id", "query_class_id", "valid", "reason_code",
+            "top_ids", "top_d", "top_class_ids", "rank_first_positive", "hit_at_1", "hit_at_5", "hit_at_10",
+            "d_top1", "y_hat"]
+        assert pd.read_parquet(d / "pair_scores.parquet").columns.tolist() == [
+            "run_id", "method_id", "pair_id", "split", "query_id", "reference_id", "s_cos", "d2", "d"]
+        assert split in load_json(d / "p3_pairs_summary.json")
         verify_shards(d)
         pred = read_predictions(d)
         split_pairs = pairs[pairs["split"] == split]

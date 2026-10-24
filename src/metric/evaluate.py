@@ -46,7 +46,7 @@ def _gallery_sha256(ids) -> str:
 def evaluate_retrieval(gallery: EmbeddingSet, queries: EmbeddingSet, classes: pd.Series, params: dict,
                        ids: dict, *, expected_gallery_ids, td: float | None = None,
                        metric: str = "cosine") -> tuple[pd.DataFrame, dict]:
-    """ids: {"out_dir"}. expected_gallery_ids come from the frozen manifest; gallery_manifest.json is a record.
+    """ids: {"out_dir", "run_id", "method_id"}. expected_gallery_ids come from the frozen manifest; gallery_manifest.json is a record.
     metric: the method's search metric ("raw_l2" for proxy_softmax_noL2)."""
     out = Path(ids["out_dir"])
     sha = _gallery_sha256(gallery.image_ids)
@@ -61,11 +61,13 @@ def evaluate_retrieval(gallery: EmbeddingSet, queries: EmbeddingSet, classes: pd
     res = blocked_topk(queries.embeddings, q_ids, gallery.embeddings, g_ids, s["k"], s["block_q"],
                        s["block_g"], s["d2_tol"], metric)
     df, summ = retrieval_table(res, q_cls, g_ids, g_cls, no_positive_mask(q_ids, q_cls, g_ids, g_cls))
-    if td is not None:
-        df["y_hat"] = pd.array([int(d <= td) if v and not pd.isna(d) else None
-                                for v, d in zip(df["valid"], df["d_top1"])], dtype="Int8")
+    df["y_hat"] = pd.array([int(d <= td) if td is not None and v and not pd.isna(d) else None
+                            for v, d in zip(df["valid"], df["d_top1"])], dtype="Int8")
+    for i, (col, v) in enumerate((("run_id", ids["run_id"]), ("method_id", ids["method_id"]),
+                                  ("split", queries.split), ("degradation_id", queries.degradation_id))):
+        df.insert(i, col, v)   # spec 13.2 column order
     summ = {**summ, "gallery_sha256": sha, "split": gallery.split}
-    write_parquet(df, out / "retrieval.parquet", nullable=["d_top1", "rank_first_positive"])
+    write_parquet(df, out / "retrieval.parquet", nullable=["d_top1", "rank_first_positive", "y_hat"])
     dump_json(summ, out / "retrieval_summary.json")
     return df, summ
 
