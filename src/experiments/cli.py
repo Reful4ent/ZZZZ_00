@@ -8,6 +8,10 @@ from typing import Callable, Sequence
 
 import yaml
 
+# Program packages register their pair builders on import; build-manifests must see them (TZ03 request 1).
+import geometric  # noqa: F401
+import metric  # noqa: F401
+import photometric  # noqa: F401
 from expcore.cli_common import add_common_args, path_overrides, plan_dir, run_cli
 from expcore.config import Config, load_config, register_params_schema
 from expcore.errors import ConfigError, DataValidationError
