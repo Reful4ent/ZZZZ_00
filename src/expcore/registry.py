@@ -1,4 +1,4 @@
-"""Protocol vocabularies: relations, decision outcomes, reason codes and algorithms."""
+"""Protocol vocabularies: relations, decision outcomes, reason codes, algorithms and pair builders."""
 
 from enum import Enum
 
@@ -47,6 +47,20 @@ def get_algorithm(module: str, method_id: str) -> object:
         return _ALGORITHMS[(module, method_id)]
     except KeyError:
         raise NotImplementedAlgorithm(f"algorithm {module}/{method_id} is not registered") from None
+
+
+_PAIR_BUILDERS: dict[str, object] = {}
+
+
+def register_pair_builder(program: str, builder: object) -> None:
+    """builder(images: DataFrame, cfg: Config) -> pairs DataFrame; build-manifests writes <program>/pairs.parquet."""
+    if _PAIR_BUILDERS.get(program, builder) is not builder:
+        raise ValueError(f"pair builder for {program!r} already registered")
+    _PAIR_BUILDERS[program] = builder
+
+
+def pair_builders() -> dict[str, object]:
+    return dict(sorted(_PAIR_BUILDERS.items()))
 
 
 register_reason_code("REJECT_GENERIC", Outcome.REJECT)
