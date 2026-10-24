@@ -103,3 +103,15 @@ def test_eval_arrays_degradations(tmp_path, tf_or_skip):
     np.testing.assert_array_equal(a, run("noise_0.03", 1, 3))
     assert not np.array_equal(a, run("noise_0.03", 2, 2))
     assert not np.array_equal(a, none)
+
+
+def test_noise_uses_degrade_stream(tmp_path):
+    from expcore.seeding import stream
+    from metric.augment import degrade
+    from metric.pipeline import _crop, eval_arrays
+    arrays, _, store = _noise_setup(tmp_path)
+    ids = list(arrays)[:3]
+    x = np.concatenate([b for _, b in eval_arrays(ids, store, 64, 48, 2, "noise_0.03", 7, raw=True)])
+    for i, iid in enumerate(ids):
+        ref = degrade(_crop(store, iid, 64, 48) / 255.0, "noise_0.03", stream(7, "degrade", i)) * 255.0
+        np.testing.assert_allclose(x[i], ref.astype(np.float32), atol=1e-4)

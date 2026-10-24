@@ -48,8 +48,8 @@ def test_tf_still_lazy():
 
 
 def test_pair_builder_registered(tmp_path, monkeypatch):
-    code = ("import metric; from expcore.registry import pair_builders; from metric.pairs import p3_pair_builder; "
-            "assert pair_builders()['p3'] is p3_pair_builder")
+    code = ("import experiments.cli; from expcore.registry import pair_builders; "   # build-manifests' process
+            "from metric.pairs import p3_pair_builder; assert pair_builders()['p3'] is p3_pair_builder")
     assert subprocess.run([sys.executable, "-c", code], capture_output=True, cwd=REPO).returncode == 0
     world = metric_world(tmp_path, monkeypatch, real_pairs=True)
     m = load_manifest(world.out_root / "manifests", "v1")

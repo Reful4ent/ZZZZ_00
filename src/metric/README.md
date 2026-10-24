@@ -18,8 +18,7 @@ TensorFlow подключается только внутри обработчи
 
 ## Порядок работы
 
-1. `python -m experiments build-manifests --config …` — манифесты и пары. Пока `build-manifests` не импортирует `metric` (запрос №1 к ТЗ 00), пары P3 строятся только в процессе с `import metric`:
-   `python -c "import metric, sys; from experiments.cli import main; sys.exit(main(['build-manifests', '--config', 'CONFIG.yaml']))"`.
+1. `python -m experiments build-manifests --config …` — манифесты и пары (построитель `p3` регистрируется при импорте `metric`, который делает `experiments.cli`).
 2. `python -m experiments validate-data --config …`.
 3. Pilot E1: `python -m experiments plan|run` над `configs/metric/e1_tune.yaml` (λ ∈ {0, 0.01, 0.1, 1}, три seed профиля pilot). Ячейки лежат в `configs/metric/cells/`.
 4. `python -m metric select --config configs/metric/e1_tune.yaml` — выбор λ* по Recall@1 на validation. Аналогично для E4 (`e4_contrastive`, `e4_triplet`, `e4_classifier`).
@@ -67,7 +66,7 @@ TensorFlow подключается только внутри обработчи
 
 ## Известные ограничения
 
-- Открытые запросы к ТЗ 00 (`TZ_03-requests-to-TZ00.md`): `build-manifests` не импортирует `metric`; нет общего `prepare_run`; нет отдельного потока `degrade` (E7 использует `stream(seed, "augment", 2**31 + i)`).
+- Открытый запрос к ТЗ 00 (`TZ_03-requests-to-TZ00.md`): нет общего `prepare_run` (P3 повторяет подготовку в `runctx.py`). Запросы №1 (импорт программ в `build-manifests`) и №4 (поток `degrade`) закрыты веткой `tz00-program-hooks`.
 - Интеграция с `experiments aggregate` — работа P4: запуски `train` не несут predictions, стадийные запуски не входят в `plan`.
 - Детерминизм на GPU не проверен; проверки выполнены на CPU.
 - TensorFlow 2.21 на нативной Windows не поддерживает GPU; обучение на реальном SOP — на Linux/WSL2 с GPU. Pilot на реальном SOP не выполнялся (см. `DECISIONS.md`); оценка GPU-часов спеки §10 остаётся прогнозом.

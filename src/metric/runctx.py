@@ -32,8 +32,6 @@ from metric.params import params_dict, validate_profile
 
 MODULE = "metric"
 NONDETERMINISM_NOTES = (
-    "degrade_stream_fallback: query degradations draw from stream(seed, 'augment', 2**31 + i) until TZ00 adds "
-    "a 'degrade' stream (spec 3.4 item 1)",
     "tf_op_determinism: results are reproducible on the same device type and library versions; CPU and GPU "
     "runs are not bitwise comparable",
 )

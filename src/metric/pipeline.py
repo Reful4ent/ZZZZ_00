@@ -40,8 +40,7 @@ def eval_arrays(image_ids, store, resize_short, crop, batch, degradation_id, see
         for i, iid in enumerate(ids, start=s):
             c = _crop(store, iid, resize_short, crop)
             if degradation_id != "none":
-                # shortcut: "augment" stream with offset 2**31 until TZ00 adds a "degrade" stream
-                rng = stream(seed, "augment", 2**31 + i)
+                rng = stream(seed, "degrade", i)
                 c = degrade(c / 255.0, degradation_id, rng) * 255.0
             xs.append(c)
         x = np.stack(xs)

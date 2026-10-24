@@ -100,21 +100,20 @@
 | `class_subset` — `{n_classes, seed}`, seed подмножества не равен seed запуска | Спека §4.5; иначе seed 11/23/37 учатся на разных подмножествах и среднее настройки смешивает данные |
 | `encoder.keras` — backbone → dense без слоя L2; L2 применяет потребитель по `preprocess.json` | Keras 3 не сериализует подклассовый `Encoder` без `get_config` |
 | Нетренируемый `embed` (`imagenet_fixed`, `rgb_hist`) — базовый запуск конфига; `--split` необязателен | Так `experiments run` исполняет сгенерированный план E4-fixed |
-| Поток `degrade` (запрос №4) не получен: шум E7 — `stream(seed, "augment", 2**31 + i)`, `i` — позиция изображения в списке | Запасной вариант из запроса к ТЗ 00; заменить после появления потока |
+| Шум E7 — `stream(seed, "degrade", i)`, `i` — позиция изображения в списке запросов | Поток `degrade` добавлен в `expcore` (запрос №4, ветка `tz00-program-hooks`) |
 | Resume делят `resume_training` (цикл, состояние) и CLI (`config.resolved.yaml`, проверка каталога checkpoint) | Конфиг и идентичность запуска проверяет ТЗ 00; цикл обучения общий с `run_training` |
 | `validate_profile` вызывает `prepare_run` для каждой команды metric | `expcore` его не вызывает; вне smoke веса должны быть `imagenet` с совпавшим `weights_sha256` |
 | `.gitattributes`: `configs/metric/** text eol=lf` | Хэш конфига зависит от байтов; CRLF на Windows меняет `config_hash` |
 | Конфиги опытов порождает `metric.expconfigs.materialize`, ячейка — один конфиг модуля | `experiments plan` не умеет сетки и подстановку выбранных значений |
 | Корневой `conftest.py` изолирует построитель пар P3 в тестах | `pytest tests/unit` должен проходить отдельно; правильное решение — изоляция реестра в фикстуре ТЗ 00 (запрос владельцу) |
-| Открытые запросы к ТЗ 00: импорт пакетов программ в `build-manifests` (№1), `prepare_run` (общий), поток `degrade` (№4) | Не блокируют P3; обходы описаны в `src/metric/README.md` |
+| Открытый запрос к ТЗ 00: общий `prepare_run`; №1 и №4 закрыты веткой `tz00-program-hooks` | Не блокирует P3: подготовка повторена в `runctx.py` |
 | Pilot на реальном SOP не выполнен (ожидает целевой среды): набор SOP на этой машине отсутствует, TensorFlow 2.21 на нативной Windows без GPU. Оценка GPU-часов §10 остаётся прогнозом, фактических чисел нет | Измерения откладываются; команды ниже |
 
 ### Pilot на реальном SOP (ожидает целевой среды)
 
 Не выполнен. Выполнить на Linux/WSL2 с GPU, TensorFlow по `requirements-metric.lock`, SOP в `--data-root`.
 
-1. Манифесты с парами P3 (`build-manifests` пока не импортирует `metric`, запрос №1):
-   `python -c "import metric, sys; from experiments.cli import main; sys.exit(main(['build-manifests', '--config', 'CONFIG.yaml']))"`;
+1. Манифесты с парами P3: `python -m experiments build-manifests --config CONFIG.yaml`;
    затем `python -m experiments validate-data --config CONFIG.yaml`.
 2. Временная копия `configs/metric/cells/e1_tune/train-proxy_cal-lambda0.01.yaml` с `params.train.epochs: 1`, `seeds.seed: 11`, профиль pilot (λ=0,01 и один seed):
    `python -m metric train --config <копия>`.
