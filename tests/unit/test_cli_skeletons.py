@@ -1,3 +1,4 @@
+import dataclasses
 import importlib
 import re
 import subprocess
@@ -6,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from expcore import registry
+from expcore import config, registry
 from expcore.config import config_hash, load_config
 from expcore.io import load_json
 from expcore.protocol import load_registry, write_plan_lock
@@ -16,6 +17,16 @@ from tests.cli_helpers import make_world
 from tests.fakes import CrashOnUnitPredictor, RandomScorePredictor
 
 pytestmark = pytest.mark.unit
+
+
+@dataclasses.dataclass(frozen=True)
+class EmptyParams:
+    """Stands in for the real metric schema so these tests keep exercising expcore mechanics only."""
+
+
+@pytest.fixture
+def empty_metric_params(monkeypatch):
+    monkeypatch.setitem(config._PARAMS_SCHEMAS, "metric", EmptyParams)
 
 REPO = Path(__file__).resolve().parents[2]
 MODULE_CMDS = [("photometric", ["run"]), ("geometric", ["run"]), ("metric", ["train"]), ("metric", ["embed"]),
@@ -37,7 +48,9 @@ def test_help_exits_zero(mod, cmd):   # T-CLI-01
 
 
 @pytest.mark.parametrize("mod,cmd", MODULE_CMDS)
-def test_skeleton_returns_6(tmp_path, monkeypatch, mod, cmd):
+def test_skeleton_returns_6(tmp_path, monkeypatch, mod, cmd, request):
+    if mod == "metric":
+        request.getfixturevalue("empty_metric_params")
     world = make_world(tmp_path, monkeypatch)
     assert _main(mod)(world.argv(*cmd)) == 6
     run = load_json(_run_dir(world, mod) / "run.json")
@@ -73,7 +86,7 @@ def test_registered_fake_algorithm_runs(tmp_path, monkeypatch):
     assert len(load_json(run_dir / "run.json")["attempts"]) == 1
 
 
-def test_metric_search_runs_queries(tmp_path, monkeypatch):
+def test_metric_search_runs_queries(tmp_path, monkeypatch, empty_metric_params):
     from tests.fakes import BatchQueryPredictor
     world = make_world(tmp_path, monkeypatch)
     monkeypatch.setitem(registry._ALGORITHMS, ("metric", "fake"), BatchQueryPredictor())
@@ -146,7 +159,7 @@ def test_pilot_runs_without_test_splits(tmp_path, monkeypatch):
     assert not (world.out_root / "confirmatory").exists()
 
 
-def test_completed_run_of_another_command_refused(tmp_path, monkeypatch):   # review P6-I3
+def test_completed_run_of_another_command_refused(tmp_path, monkeypatch, empty_metric_params):   # review P6-I3
     from tests.fakes import BatchQueryPredictor
     world = make_world(tmp_path, monkeypatch)
     monkeypatch.setitem(registry._ALGORITHMS, ("metric", "fake"), BatchQueryPredictor())

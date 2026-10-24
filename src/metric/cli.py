@@ -1,22 +1,13 @@
 """python -m metric train|embed|search --config … — skeleton; TensorFlow is imported only inside handlers."""
 
 import argparse
-from dataclasses import dataclass
 from typing import Sequence
 
 from expcore.cli_common import command_parser, execute_run, run_cli
-from expcore.config import register_params_schema
+import metric.params  # noqa: F401  (registers the params schema)
 
 MODULE = "metric"
 COMMANDS = ("train", "embed", "search")
-
-
-@dataclass(frozen=True)
-class MetricParams:
-    """Module parameters; fields are added by the program's TZ together with its algorithms."""
-
-
-register_params_schema(MODULE, MetricParams)
 
 
 def _enable_tf_determinism() -> bool | None:
