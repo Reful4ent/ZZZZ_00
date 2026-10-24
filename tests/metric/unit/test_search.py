@@ -108,3 +108,19 @@ def test_small_gallery_padding():
     df, s = retrieval_table(res, cls, ids, cls, no_positive_mask(ids, cls, ids, cls))
     assert s["recall_at_10"] == 1.0
     assert len(df.iloc[0]["top_ids"]) == 2
+
+
+@pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
+def test_range_violation_nan(bad):
+    with pytest.raises(RunStop) as e:
+        check_and_clip_d2(np.array([bad, 1.0]), 1e-6)
+    assert e.value.failure_type == "DISTANCE_RANGE_VIOLATION"
+
+
+@pytest.mark.parametrize("metric", ["cosine", "raw_l2"])
+def test_blocked_topk_nan_embedding_raises(metric):
+    z, ids, _ = _data(n=10)
+    z[3] = np.nan
+    with pytest.raises(RunStop) as e:
+        blocked_topk(z, ids, z, ids, 5, 4, 4, 1e-6, metric)
+    assert e.value.failure_type == "DISTANCE_RANGE_VIOLATION"

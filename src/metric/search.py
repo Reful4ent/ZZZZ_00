@@ -15,7 +15,7 @@ NO_POSITIVE = "NOT_APPLICABLE_NO_POSITIVE_IN_GALLERY"
 
 def check_and_clip_d2(d2: np.ndarray, tol: float) -> np.ndarray:
     lo, hi = float(np.min(d2)), float(np.max(d2))
-    if lo < -tol or hi > 4.0 + tol:
+    if not (np.isfinite(lo) and np.isfinite(hi)) or lo < -tol or hi > 4.0 + tol:
         raise RunStop("DISTANCE_RANGE_VIOLATION", {"min": lo, "max": hi, "tol": tol})
     return np.clip(d2, 0.0, 4.0)
 
@@ -49,7 +49,10 @@ def blocked_topk(zq, q_ids, zg, g_ids, k: int, block_q: int, block_g: int, tol: 
             if metric == "cosine":
                 d2 = check_and_clip_d2(2.0 - 2.0 * dot, tol)
             else:
-                d2 = np.maximum(0.0, qn[qs:qe, None] + gn[None, gs:ge] - 2.0 * dot)
+                d2 = qn[qs:qe, None] + gn[None, gs:ge] - 2.0 * dot
+                if not np.isfinite(d2).all():
+                    raise RunStop("DISTANCE_RANGE_VIOLATION", {"reason": "non_finite_d2"})
+                d2 = np.maximum(0.0, d2)
             d2[q_ids[qs:qe, None] == g_ids[None, gs:ge]] = np.inf
             idx = np.broadcast_to(np.arange(gs, ge, dtype=np.int64), d2.shape)
             all_d2 = np.concatenate([cur_d2, d2], axis=1)
