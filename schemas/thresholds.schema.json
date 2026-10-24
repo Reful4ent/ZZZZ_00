@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "created_at": {
+      "type": "string"
+    },
+    "criterion_id": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "manifest_hash": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "method_id": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "n_validation_pairs": {
+      "type": "integer",
+      "x-dtype": "int64"
+    },
+    "run_id": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "split_used": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "value": {
+      "type": "number",
+      "x-dtype": "float64"
+    }
+  },
+  "required": [
+    "run_id",
+    "method_id",
+    "criterion_id",
+    "value",
+    "split_used",
+    "n_validation_pairs",
+    "manifest_hash",
+    "created_at"
+  ],
+  "title": "thresholds.json",
+  "type": "object"
+}

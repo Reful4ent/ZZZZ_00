@@ -112,3 +112,8 @@ def make_all(data_root: Path) -> dict[str, dict[str, int]]:
     data_root = Path(data_root)
     return {"kadid10k": make_kadid(data_root / "kadid10k"), "hpatches": make_hpatches(data_root / "hpatches"),
             "mvtec_ad": make_mvtec(data_root / "mvtec_ad"), "sop": make_sop(data_root / "sop")}
+
+
+if __name__ == "__main__":   # python -m tests.fixtures_builder <data_root>
+    import sys
+    print(make_all(Path(sys.argv[1])))

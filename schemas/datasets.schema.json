@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "items": {
+    "additionalProperties": false,
+    "properties": {
+      "archive_name": {
+        "type": "string"
+      },
+      "archive_sha256": {
+        "anyOf": [
+          {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "archive_verified": {
+        "type": "boolean"
+      },
+      "completeness": {
+        "anyOf": [
+          {
+            "enum": [
+              "full",
+              "subset",
+              "unverified"
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "dataset_id": {
+        "enum": [
+          "kadid10k",
+          "hpatches",
+          "mvtec_ad",
+          "sop"
+        ]
+      },
+      "discovered_counts": {
+        "type": "object"
+      },
+      "download_date": {
+        "anyOf": [
+          {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "extra_archives": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "sha256": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "sha256"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "license": {
+        "type": "string"
+      },
+      "license_file": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "sha256": {
+                "anyOf": [
+                  {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "manifest_version": {
+        "type": "string"
+      },
+      "source_url": {
+        "type": "string"
+      },
+      "subset_name": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "dataset_id",
+      "source_url",
+      "archive_sha256",
+      "license",
+      "discovered_counts",
+      "manifest_version",
+      "download_date",
+      "archive_name",
+      "archive_verified",
+      "license_file",
+      "extra_archives",
+      "completeness"
+    ],
+    "type": "object"
+  },
+  "title": "datasets.json",
+  "type": "array"
+}

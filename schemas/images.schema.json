@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "category_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-dtype": "str"
+    },
+    "channels": {
+      "type": "integer",
+      "x-dtype": "int32"
+    },
+    "class_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-dtype": "str"
+    },
+    "dataset_id": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "defect_type": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-dtype": "str"
+    },
+    "height": {
+      "type": "integer",
+      "x-dtype": "int32"
+    },
+    "image_id": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "relative_path": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "sha256": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "source_group_id": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "split": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "width": {
+      "type": "integer",
+      "x-dtype": "int32"
+    }
+  },
+  "required": [
+    "image_id",
+    "dataset_id",
+    "source_group_id",
+    "class_id",
+    "category_id",
+    "split",
+    "relative_path",
+    "sha256",
+    "width",
+    "height",
+    "channels",
+    "defect_type"
+  ],
+  "title": "images.parquet row",
+  "type": "object"
+}

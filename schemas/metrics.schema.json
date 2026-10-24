@@ -1,0 +1,242 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "correct_all": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-dtype": "float64"
+    },
+    "correct_cond": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-dtype": "float64"
+    },
+    "coverage": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-dtype": "float64"
+    },
+    "coverage_neg": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-dtype": "float64"
+    },
+    "coverage_pos": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-dtype": "float64"
+    },
+    "fn": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-dtype": "int64"
+    },
+    "fp": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-dtype": "int64"
+    },
+    "fpr_all": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-dtype": "float64"
+    },
+    "fpr_cond": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-dtype": "float64"
+    },
+    "method_id": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "module": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "n_neg": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-dtype": "int64"
+    },
+    "n_not_applicable": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-dtype": "int64"
+    },
+    "n_pairs": {
+      "type": "integer",
+      "x-dtype": "int64"
+    },
+    "n_pos": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-dtype": "int64"
+    },
+    "n_seeds": {
+      "type": "integer",
+      "x-dtype": "int64"
+    },
+    "n_source_groups": {
+      "type": "integer",
+      "x-dtype": "int64"
+    },
+    "null_reasons": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "oracle_mode": {
+      "type": "boolean",
+      "x-dtype": "bool"
+    },
+    "positive_class": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "post_test_study": {
+      "type": "boolean",
+      "x-dtype": "bool"
+    },
+    "profile": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "recall_all": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-dtype": "float64"
+    },
+    "recall_cond": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-dtype": "float64"
+    },
+    "rej_neg": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-dtype": "int64"
+    },
+    "rej_pos": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-dtype": "int64"
+    },
+    "relation_id": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "rho_rej": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-dtype": "float64"
+    },
+    "run_id": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "score_transform": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "section": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "seed": {
+      "type": "integer",
+      "x-dtype": "int64"
+    },
+    "split": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "tn": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-dtype": "int64"
+    },
+    "tp": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-dtype": "int64"
+    }
+  },
+  "required": [
+    "run_id",
+    "module",
+    "method_id",
+    "relation_id",
+    "split",
+    "seed",
+    "profile",
+    "section",
+    "oracle_mode",
+    "post_test_study",
+    "positive_class",
+    "score_transform",
+    "n_pairs",
+    "n_source_groups",
+    "n_seeds",
+    "tp",
+    "fp",
+    "tn",
+    "fn",
+    "rej_pos",
+    "rej_neg",
+    "n_pos",
+    "n_neg",
+    "n_not_applicable",
+    "coverage",
+    "coverage_pos",
+    "coverage_neg",
+    "rho_rej",
+    "recall_all",
+    "fpr_all",
+    "correct_all",
+    "recall_cond",
+    "fpr_cond",
+    "correct_cond",
+    "null_reasons"
+  ],
+  "title": "metrics.parquet row",
+  "type": "object"
+}

@@ -1,0 +1,238 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "attempts": {
+      "type": "array"
+    },
+    "command": {
+      "type": "string"
+    },
+    "config_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "dataset_manifest_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "dirty_diff_hash": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "environment": {
+      "additionalProperties": false,
+      "properties": {
+        "cpu": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gpu": {},
+        "os": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "python": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "cpu",
+        "gpu",
+        "os",
+        "path",
+        "python",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "failure": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "message": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "unit_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "message",
+            "type",
+            "unit_id"
+          ],
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "finished_at": {
+      "anyOf": [
+        {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "git_commit": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "library_primitives": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "check_id": {
+            "type": "string"
+          },
+          "library": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "check_id",
+          "library",
+          "name",
+          "version"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "module": {
+      "type": "string"
+    },
+    "oracle_mode": {
+      "type": "boolean"
+    },
+    "paths_resolved": {
+      "type": "object"
+    },
+    "post_test_study": {
+      "type": "boolean"
+    },
+    "profile": {
+      "enum": [
+        "smoke",
+        "pilot",
+        "confirmatory"
+      ]
+    },
+    "protocol_version": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "seed": {
+      "type": "integer"
+    },
+    "started_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "running",
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "run_id",
+    "config_hash",
+    "git_commit",
+    "dirty_diff_hash",
+    "dataset_manifest_hash",
+    "seed",
+    "environment",
+    "status",
+    "started_at",
+    "finished_at",
+    "profile",
+    "module",
+    "command",
+    "protocol_version",
+    "oracle_mode",
+    "post_test_study",
+    "library_primitives",
+    "attempts",
+    "failure"
+  ],
+  "title": "run.json",
+  "type": "object"
+}

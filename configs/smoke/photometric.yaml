@@ -1,0 +1,106 @@
+# Smoke config (photometric): fixture datasets built by `python -m tests.fixtures_builder data/smoke`.
+# Every key is required (spec §5.6). The skeleton algorithm id makes `run` exit 6 until a program
+# registers an algorithm (TZ 01-03).
+schema_version: '1'
+protocol_version: '1'
+profile: smoke
+seeds:
+  seed: 11
+  seeds:
+  - 11
+datasets:
+  kadid10k:
+    dataset_id: kadid10k
+    manifest_version: smoke-v1
+    fixture: true
+    categories: null
+    n_validation: 2
+    expected:
+      originals: 6
+      derivatives: 24
+    provenance:
+      source_url: https://database.mmsp-kn.de/kadid-10k-database.html
+      archive_name: kadid10k.zip
+      download_date: null
+      license: see provider
+      license_file: null
+  hpatches:
+    dataset_id: hpatches
+    manifest_version: smoke-v1
+    fixture: true
+    categories: null
+    n_validation: null
+    expected:
+      sequences: 10
+    provenance:
+      source_url: https://github.com/hpatches/hpatches-dataset
+      archive_name: hpatches-sequences-release.tar.gz
+      download_date: null
+      license: see provider
+      license_file: null
+  mvtec_ad:
+    dataset_id: mvtec_ad
+    manifest_version: smoke-v1
+    fixture: true
+    categories:
+    - carpet
+    - leather
+    - tile
+    - wood
+    n_validation: null
+    expected:
+      train_good: 32
+      test_good: 8
+      test_defect: 8
+    provenance:
+      source_url: https://www.mvtec.com/company/research/datasets/mvtec-ad
+      archive_name: mvtec_anomaly_detection.tar.xz
+      download_date: null
+      license: CC BY-NC-SA 4.0
+      license_file: null
+  sop:
+    dataset_id: sop
+    manifest_version: smoke-v1
+    fixture: true
+    categories: null
+    n_validation: null
+    expected:
+      products: 14
+      train_images: 30
+      test_images: 12
+    provenance:
+      source_url: https://cvgl.stanford.edu/projects/lifted_struct/
+      archive_name: Stanford_Online_Products.zip
+      download_date: null
+      license: see provider
+      license_file: null
+inputs:
+  pair_columns:
+  - pair_id
+  - query_id
+  - reference_id
+  - relation_id
+  color_order: bgr
+data_modes:
+  oracle:
+    enabled: false
+    reason: null
+algorithms:
+  skeleton: '0'
+params: {}
+decision:
+  tie_rule: '>='
+  criterion_id: null
+determinism:
+  deterministic_ops: true
+  opencv_threads: 1
+  numpy_threads: 1
+runner:
+  chunk_size: 256
+logging:
+  level: INFO
+  dir: logs
+paths:
+  data_root: data/smoke
+  manifest_dir: data/smoke/manifests
+  out_root: out

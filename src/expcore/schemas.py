@@ -208,25 +208,48 @@ def validate_predictions(pred: pd.DataFrame, pairs: pd.DataFrame, *, require_com
 # --- JSON records -----------------------------------------------------------------------------
 
 _Check = Callable[[Any], bool]
-_is_str: _Check = lambda v: isinstance(v, str)  # noqa: E731
-_is_int: _Check = lambda v: isinstance(v, int) and not isinstance(v, bool)  # noqa: E731
-_is_bool: _Check = lambda v: isinstance(v, bool)  # noqa: E731
-_is_obj: _Check = lambda v: isinstance(v, dict)  # noqa: E731
-_is_list: _Check = lambda v: isinstance(v, list)  # noqa: E731
-_is_sha: _Check = lambda v: isinstance(v, str) and _SHA256.fullmatch(v) is not None  # noqa: E731
-_is_ts: _Check = lambda v: isinstance(v, str) and _TS.fullmatch(v) is not None  # noqa: E731
+_SHA_SCHEMA = {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+_TS_SCHEMA = {"type": "string", "pattern": "^" + _TS.pattern + "$"}
+
+
+def _check(fn: Callable[[Any], bool], schema: dict) -> _Check:
+    """A value check that also carries its JSON Schema fragment (for scripts/gen_schemas.py)."""
+    fn.schema = schema
+    return fn
+
+
+_is_str = _check(lambda v: isinstance(v, str), {"type": "string"})
+_is_int = _check(lambda v: isinstance(v, int) and not isinstance(v, bool), {"type": "integer"})
+_is_bool = _check(lambda v: isinstance(v, bool), {"type": "boolean"})
+_is_obj = _check(lambda v: isinstance(v, dict), {"type": "object"})
+_is_list = _check(lambda v: isinstance(v, list), {"type": "array"})
+_is_sha = _check(lambda v: isinstance(v, str) and _SHA256.fullmatch(v) is not None, _SHA_SCHEMA)
+_is_ts = _check(lambda v: isinstance(v, str) and _TS.fullmatch(v) is not None, _TS_SCHEMA)
+
+
+def _nullable(check: _Check) -> _Check:
+    return _check(lambda v: v is None or check(v), {"anyOf": [check.schema, {"type": "null"}]})
 
 
 def _one_of(*allowed: str) -> _Check:
-    return lambda v: v in allowed
+    return _check(lambda v: v in allowed, {"enum": list(allowed)})
+
+
+def _record(**fields: _Check) -> _Check:
+    """An object with exactly these keys, each passing its check."""
+    return _check(lambda v: isinstance(v, dict) and set(v) == set(fields) and all(c(v[k]) for k, c in fields.items()),
+                  {"type": "object", "required": sorted(fields), "additionalProperties": False,
+                   "properties": {k: c.schema for k, c in fields.items()}})
 
 
 def _keys(*names: str) -> _Check:
-    return lambda v: isinstance(v, dict) and set(v) == set(names)
+    return _check(lambda v: isinstance(v, dict) and set(v) == set(names),
+                  {"type": "object", "required": sorted(names), "additionalProperties": False,
+                   "properties": dict.fromkeys(names, {})})
 
 
 def _list_of(check: _Check) -> _Check:
-    return lambda v: isinstance(v, list) and all(check(x) for x in v)
+    return _check(lambda v: isinstance(v, list) and all(check(x) for x in v), {"type": "array", "items": check.schema})
 
 
 def _check_json_record(rec: Any, fields: Mapping[str, tuple[_Check, bool]], where: str,
@@ -249,6 +272,14 @@ def _check_json_record(rec: Any, fields: Mapping[str, tuple[_Check, bool]], wher
             _fail(where, f"{name}: invalid value {value!r}")
 
 
+def record_json_schema(fields: Mapping[str, tuple[_Check, bool]], optional: frozenset = frozenset()) -> dict:
+    """JSON Schema of a record validated by _check_json_record (same fields, nullability, strictness)."""
+    props = {k: ({"anyOf": [c.schema, {"type": "null"}]} if nullable else c.schema)
+             for k, (c, nullable) in fields.items()}
+    return {"type": "object", "required": [k for k in fields if k not in optional], "additionalProperties": False,
+            "properties": props}
+
+
 def _no_nan(obj: Any, where: str) -> None:
     try:
         json.dumps(obj, allow_nan=False)
@@ -256,7 +287,7 @@ def _no_nan(obj: Any, where: str) -> None:
         raise DataValidationError(f"INV-08: {where}: NaN/Inf in JSON") from e
 
 
-_DATASET_FIELDS = {
+DATASET_FIELDS = {
     "dataset_id": (_one_of(*ALLOWED_SPLITS), False),
     "source_url": (_is_str, False),
     "archive_sha256": (_is_sha, True),   # null only when archive_verified is false
@@ -266,14 +297,12 @@ _DATASET_FIELDS = {
     "download_date": (_is_ts, True),
     "archive_name": (_is_str, False),
     "archive_verified": (_is_bool, False),
-    "license_file": (lambda v: _keys("path", "sha256")(v)
-                     and (v["path"] is None or _is_str(v["path"]))
-                     and (v["sha256"] is None or _is_sha(v["sha256"])), True),
-    "extra_archives": (_list_of(lambda a: _keys("name", "sha256")(a) and _is_str(a["name"]) and _is_sha(a["sha256"])),
-                       False),
+    "license_file": (_record(path=_nullable(_is_str), sha256=_nullable(_is_sha)), True),
+    "extra_archives": (_list_of(_record(name=_is_str, sha256=_is_sha)), False),
     "completeness": (_one_of(*COMPLETENESS), True),
     "subset_name": (_is_str, False),
 }
+DATASET_OPTIONAL = frozenset({"subset_name"})
 
 
 # Provenance that may be unknown for unverified archives (smoke fixtures, missing downloads).
@@ -287,7 +316,7 @@ def validate_datasets_json(obj: list[dict]) -> None:
     seen = set()
     for i, rec in enumerate(obj):
         where = f"datasets.json[{i}]"
-        _check_json_record(rec, _DATASET_FIELDS, where, optional=frozenset({"subset_name"}))
+        _check_json_record(rec, DATASET_FIELDS, where, optional=DATASET_OPTIONAL)
         if rec["dataset_id"] in seen:
             _fail(where, f"duplicate dataset_id {rec['dataset_id']!r}")
         seen.add(rec["dataset_id"])
@@ -301,7 +330,7 @@ def validate_datasets_json(obj: list[dict]) -> None:
             _fail(where, "subset_name is required exactly when completeness is 'subset'")
 
 
-_RUN_FIELDS = {
+RUN_FIELDS = {
     "schema_version": (_is_str, False),
     "run_id": (_is_str, False),
     "config_hash": (_is_sha, False),
@@ -309,8 +338,8 @@ _RUN_FIELDS = {
     "dirty_diff_hash": (_is_sha, True),
     "dataset_manifest_hash": (_is_sha, False),
     "seed": (_is_int, False),
-    "environment": (lambda v: _keys("path", "sha256", "python", "os", "cpu", "gpu")(v) and _is_sha(v["sha256"]),
-                    False),
+    "environment": (_record(path=_is_str, sha256=_is_sha, python=_nullable(_is_str), os=_nullable(_is_str),
+                            cpu=_nullable(_is_str), gpu=_check(lambda v: True, {})), False),
     "status": (_one_of(*RUN_STATUSES), False),
     "started_at": (_is_ts, False),
     "finished_at": (_is_ts, True),
@@ -320,16 +349,18 @@ _RUN_FIELDS = {
     "protocol_version": (_is_str, False),
     "oracle_mode": (_is_bool, False),
     "post_test_study": (_is_bool, False),
-    "library_primitives": (_list_of(_keys("name", "library", "version", "check_id")), False),
+    "library_primitives": (_list_of(_record(name=_is_str, library=_is_str, version=_nullable(_is_str),
+                                            check_id=_is_str)), False),
     "attempts": (_is_list, False),
-    "failure": (_keys("type", "message", "unit_id"), True),
+    "failure": (_record(type=_is_str, message=_is_str, unit_id=_nullable(_is_int)), True),
     "paths_resolved": (_is_obj, False),  # §8.2: actual paths, outside config_hash
 }
+RUN_OPTIONAL = frozenset({"paths_resolved"})
 
 
 def validate_run_json(obj: dict) -> None:
     _no_nan(obj, "run.json")
-    _check_json_record(obj, _RUN_FIELDS, "run.json", optional=frozenset({"paths_resolved"}))
+    _check_json_record(obj, RUN_FIELDS, "run.json", optional=RUN_OPTIONAL)
     expected_id = f"{obj['module']}-{obj['profile']}-{obj['config_hash'][:12]}-s{obj['seed']}"
     if obj["run_id"] != expected_id:
         _fail("run.json", f"run_id {obj['run_id']!r} != {expected_id!r} (D-08)")

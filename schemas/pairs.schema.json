@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "gt_H_path": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-dtype": "str"
+    },
+    "gt_mask_path": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-dtype": "str"
+    },
+    "input_mask_path": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-dtype": "str"
+    },
+    "pair_id": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "query_id": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "reference_id": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "relation_id": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "seed": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-dtype": "int64"
+    },
+    "severity": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-dtype": "float64"
+    },
+    "source_group_id": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "split": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "transform_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-dtype": "str"
+    },
+    "y_match": {
+      "type": "integer",
+      "x-dtype": "int8"
+    }
+  },
+  "required": [
+    "pair_id",
+    "query_id",
+    "reference_id",
+    "relation_id",
+    "y_match",
+    "split",
+    "source_group_id",
+    "transform_id",
+    "severity",
+    "seed",
+    "gt_H_path",
+    "gt_mask_path",
+    "input_mask_path"
+  ],
+  "title": "pairs.parquet row",
+  "type": "object"
+}

@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "patternProperties": {
+    "^comp_": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-dtype": "float64"
+    }
+  },
+  "properties": {
+    "elapsed_ms": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-dtype": "float64"
+    },
+    "method_id": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "outcome": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "pair_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-dtype": "str"
+    },
+    "q_valid": {
+      "type": "boolean",
+      "x-dtype": "bool"
+    },
+    "query_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-dtype": "str"
+    },
+    "reason_code": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-dtype": "str"
+    },
+    "run_id": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "score_direction": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "score_raw": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-dtype": "float64"
+    },
+    "timing_mode": {
+      "type": "string",
+      "x-dtype": "str"
+    },
+    "y_pred": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "x-dtype": "int8"
+    }
+  },
+  "required": [
+    "run_id",
+    "pair_id",
+    "query_id",
+    "method_id",
+    "score_raw",
+    "score_direction",
+    "y_pred",
+    "q_valid",
+    "reason_code",
+    "elapsed_ms",
+    "outcome",
+    "timing_mode"
+  ],
+  "title": "predictions.parquet row",
+  "type": "object"
+}
