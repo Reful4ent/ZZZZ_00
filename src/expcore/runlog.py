@@ -14,6 +14,7 @@ from typing import Any, Mapping, Sequence
 from expcore.errors import ProtocolViolationError, ResultTamperedError
 from expcore.hashing import sha256_file
 from expcore.io import dump_json, load_json
+from expcore.primitives import primitive_versions
 from expcore.schemas import validate_run_json
 
 SCHEMA_VERSION = "1"
@@ -88,7 +89,7 @@ def collect_environment(*, deterministic_ops: bool | None, extra: Mapping | None
         "os": platform.platform(), "cpu": platform.processor() or platform.machine(), "cpu_count": os.cpu_count(),
         "ram_total_mb": ram, "gpu": gpu, "libraries": dict(sorted(libraries.items())),
         "env_vars": {k: os.environ.get(k) for k in ENV_VARS}, "deterministic_ops": deterministic_ops,
-        "nondeterminism_notes": notes, "library_primitives": [],
+        "nondeterminism_notes": notes, "library_primitives": primitive_versions(),
     }
     env.update(extra or {})
     return env

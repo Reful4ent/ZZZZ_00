@@ -13,6 +13,7 @@ from expcore.errors import ConfigError, DataValidationError, NotImplementedAlgor
 from expcore.io import load_json
 from expcore.loaders import ImageStore, QueryInput, SplitGuard, TEST_SPLITS, accessible_splits, load_pair_inputs
 from expcore.manifests import load_manifest, manifest_version
+from expcore.primitives import primitive_versions
 from expcore.protocol import check_run_in_plan, is_post_test, open_test
 from expcore.registry import get_algorithm
 from expcore.resume import SUCCESS, Runner, RunContext
@@ -118,7 +119,7 @@ def execute_run(module: str, command: str, args: argparse.Namespace, *, query: b
         oracle_mode=oracle,
         post_test_study=registry_path.is_file() and is_post_test(registry_path, cfg.protocol_version),
         git_commit=commit, dirty_diff_hash=dirty, environment=collect_environment(deterministic_ops=deterministic_ops),
-        library_primitives=[], paths_resolved={"data_root": cfg.paths.data_root,
+        library_primitives=primitive_versions(), paths_resolved={"data_root": cfg.paths.data_root,
                                                "manifest_dir": cfg.paths.manifest_dir, "out_root": cfg.paths.out_root})
     try:
         predictor = get_algorithm(module, base_method)
