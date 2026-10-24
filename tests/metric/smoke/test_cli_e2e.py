@@ -1,5 +1,6 @@
 """Task 7.1 e2e: build-manifests (p3 builder) -> train -> embed val/test -> search --pairs val/test -> select."""
 import copy
+import hashlib
 
 import numpy as np
 import pandas as pd
@@ -100,3 +101,43 @@ def test_e2e_smoke(tmp_path, monkeypatch, capsys):
 
     code, out, _ = _select(world, [4, 6])
     assert code == 0 and all(t in load_json(out)["disclaimers"] for t in SPEC_DISCLAIMERS)
+
+
+def test_retrain_continues_interrupted_run(tmp_path, monkeypatch):
+    """`metric train` again on a failed run (as `experiments run` does) resumes from checkpoints/last."""
+    pytest.importorskip("tensorflow")
+    import metric.train as T
+    from metric.errors import RunStop
+    from metric.params import BASE_PARAMS
+    params = copy.deepcopy(SMOKE_PARAMS)
+    params["train"].update(epochs=3, steps_per_epoch=3)
+    params["checkpoint"]["every_steps"] = 5   # save after gstep 4, mid-epoch 2
+    monkeypatch.setitem(BASE_PARAMS["train"], "epochs", 3)
+    monkeypatch.setitem(BASE_PARAMS["checkpoint"], "every_steps", 5)
+    real, calls = T.make_proxy_step, []
+
+    def killable(*a):
+        fn = real(*a)
+
+        def step(*args):
+            calls.append(1)
+            if len(calls) == 6:   # gstep 5 fails once
+                raise RunStop("SAMPLER_ERROR", {"global_step": 5})
+            return fn(*args)
+        return step
+
+    monkeypatch.setattr(T, "make_proxy_step", killable)
+    world = metric_world(tmp_path, monkeypatch, params=params, sop_classes=25)
+    assert _main(world.argv("train")) == 4
+    run_dir = _train_run_dir(world)
+    assert (run_dir / "failure.json").exists()
+    part1 = run_dir / "training_steps" / "part-001.parquet"
+    fp = (part1.stat().st_mtime_ns, hashlib.sha256(part1.read_bytes()).hexdigest())
+
+    assert _main(world.argv("train")) == 0
+    assert len(calls) == 6 + 4   # gsteps 5..8 only: continued, not restarted
+    assert (part1.stat().st_mtime_ns, hashlib.sha256(part1.read_bytes()).hexdigest()) == fp
+    assert list(pd.read_parquet(run_dir / "training_steps.parquet")["global_step"]) == list(range(9))
+    assert len(load_json(run_dir / "run.json")["attempts"]) == 2
+    assert not (run_dir / "failure.json").exists()
+    assert "auto_resume" in (run_dir / "run.log.jsonl").read_text(encoding="utf-8")

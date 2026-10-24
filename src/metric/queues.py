@@ -2,6 +2,8 @@
 import numpy as np
 import tensorflow as tf
 
+DRIFT_BLOCK = 1024   # classes per host transfer in max_sum_drift
+
 
 class ClassQueues(tf.Module):
     def __init__(self, n_cls: int, K: int, d: int) -> None:
@@ -34,9 +36,10 @@ class ClassQueues(tf.Module):
         delta = tf.math.unsorted_segment_sum(
             kf * tf.cast(z, tf.float64) - ef * tf.cast(old, tf.float64), labels, self.n_cls)
         kidx = tf.boolean_mask(idx, keep)
-        self.buf.assign(tf.tensor_scatter_nd_update(self.buf, kidx, tf.boolean_mask(z, keep)))
+        # in place: tensor_scatter_nd_update + assign would copy the whole buffer every step
+        self.buf.scatter_nd_update(kidx, tf.boolean_mask(z, keep))
         steps = tf.fill([tf.shape(kidx)[0]], tf.cast(step, tf.int64))
-        self.ins_step.assign(tf.tensor_scatter_nd_update(self.ins_step, kidx, steps))
+        self.ins_step.scatter_nd_update(kidx, steps)
         self.S.assign_add(delta)
         cnt = tf.math.unsorted_segment_sum(tf.ones_like(labels), labels, self.n_cls)
         w = tf.minimum(cnt, K)
@@ -60,10 +63,13 @@ class ClassQueues(tf.Module):
         per = np.where(n > 0, (age * valid).sum(1) / np.maximum(n, 1), np.nan)
         return {"mean_age": float(age[valid].mean()) if valid.any() else None, "per_class_age": per}
 
-    def max_sum_drift(self) -> float:
-        s = (self.buf.numpy().astype(np.float64) * self._valid()[:, :, None]).sum(1)
-        return float(np.abs(self.S.numpy() - s).max())
+    def max_sum_drift(self, block: int = DRIFT_BLOCK) -> float:
+        valid, S, drift = self._valid(), self.S.numpy(), 0.0
+        for c0 in range(0, self.n_cls, block):   # blockwise: a float64 copy of all of buf is ~2x M_Q on host
+            s = (self.buf[c0:c0 + block].numpy().astype(np.float64) * valid[c0:c0 + block, :, None]).sum(1)
+            drift = max(drift, float(np.abs(S[c0:c0 + block] - s).max()))
+        return drift
 
     def ordered_entries(self, c: int) -> np.ndarray:
         n, start = int(self.n[c]), int(self.start[c])
-        return self.buf.numpy()[c, (start + np.arange(n)) % self.K]
+        return self.buf[c].numpy()[(start + np.arange(n)) % self.K]

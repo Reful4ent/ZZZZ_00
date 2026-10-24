@@ -8,6 +8,7 @@ import tensorflow as tf
 from metric.losses import l2_normalize_checked
 
 _WEIGHTS_FILE = "resnet50_weights_tf_dim_ordering_tf_kernels_notop.h5"
+_WEIGHTS_URL = "https://storage.googleapis.com/tensorflow/keras-applications/resnet/" + _WEIGHTS_FILE   # = Keras
 
 
 class Encoder(tf.keras.Model):
@@ -35,8 +36,11 @@ def build_encoder(weights, input_size, embedding_dim, dense_seed) -> Encoder:
     return enc
 
 
-def weights_file_sha256():
+def weights_file_sha256(download=False):
+    """SHA-256 of Keras' cached ImageNet weights; None if not cached (download=True fetches them first)."""
     p = Path.home() / ".keras" / "models" / _WEIGHTS_FILE
+    if download and not p.is_file():
+        p = Path(tf.keras.utils.get_file(_WEIGHTS_FILE, _WEIGHTS_URL, cache_subdir="models"))
     return hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else None
 
 

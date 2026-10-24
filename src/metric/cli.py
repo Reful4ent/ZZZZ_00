@@ -96,27 +96,38 @@ def _train(args: argparse.Namespace, checkpoint: Path | None = None) -> None:
     run = prepare_run("train", args, deterministic_ops=deterministic)
     if run.method_id in UNTRAINABLE:
         raise ConfigError(f"{run.method_id} has no training: run `metric embed` for it")
+    auto = False
     if checkpoint is not None:
         if checkpoint.resolve().parent.parent != run.run_dir.resolve():
             raise ConfigError(f"{checkpoint}: not a checkpoint of {run.run_dir}")
     elif _completed(run):
         return
+    else:   # a failed/interrupted attempt: continue from its checkpoint (M-D03: same result as from scratch)
+        from metric.checkpoint import has_state
+        last = run.run_dir / "checkpoints" / "last"
+        if has_state(last):
+            checkpoint, auto = last, True
     from metric import train as T
     p = run.params
     ctx = T.TrainContext(params=p, seed=run.cfg.seeds.seed, run_dir=run.run_dir, images=run.images, store=run.store,
                          method=run.method_id, config_hash=run.config_hash,
-                         manifest_hash=run.manifest.manifest_hash,
-                         weights_sha256=p["model"]["weights_sha256"] if p["model"]["weights"] else None)
+                         manifest_hash=run.manifest.manifest_hash, weights_sha256=run.weights_sha256)
 
     def body(run):
-        res = T.run_training(ctx) if checkpoint is None else T.resume_training(ctx, checkpoint)
         log = JsonlLogger(run.run_dir / "run.log.jsonl", run.run_id)
+        if auto:
+            from metric.checkpoint import read_state
+            log.log("INFO", "auto_resume", checkpoint="checkpoints/last",
+                    global_step=read_state(checkpoint)["global_step"])
+        res = T.run_training(ctx) if checkpoint is None else T.resume_training(ctx, checkpoint)
         for check in res.get("queue_checks", []):
             log.log("INFO", "queue_check", **check)
         if res.get("memory") is not None:
             dump_json(res["memory"], run.run_dir / "memory.json")
         if res["status"] == "failed":
             raise RunStop(res["failure"]["type"], res["failure"]["details"])
+        # a completed attempt drops the earlier attempt's failure.json (errors.jsonl and run.json keep the history)
+        (run.run_dir / "failure.json").unlink(missing_ok=True)
     _execute(run, body)
 
 
@@ -207,6 +218,9 @@ def _search(args: argparse.Namespace) -> None:
     from metric.runctx import prepare_run
     gallery, queries = load_embeddings(args.gallery), load_embeddings(args.queries)
     split = queries.split
+    if args.pairs and queries.degradation_id != "none":   # spec 9.7: degradations apply to retrieval queries only
+        raise ConfigError(f"search --pairs: queries are degraded ({queries.degradation_id!r}); pairs and tD use "
+                          "undegraded embeddings")
     if args.pairs and split != "validation" and not args.thresholds:
         raise ProtocolViolationError(f"search --pairs on {split!r} needs --thresholds <validation thresholds.json>")
     stage = {"command": "search", "split": split, "degradation_id": queries.degradation_id,

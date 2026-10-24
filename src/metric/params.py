@@ -8,8 +8,9 @@ from expcore.errors import ConfigError
 
 METHOD_IDS = ("proxy_cal", "base_minimal", "contrastive", "triplet", "classifier", "imagenet_fixed", "rgb_hist",
               "proxy_softmax_noL2")
-# keys the experiments vary (spec 11); lr / margin only for methods whose grid (8.4) contains them
-VARIED_KEYS = frozenset({"lambda", "K", "n_warm", "lr", "margin", "train_augment", "normalize_l2",
+# keys the experiments vary (spec 11); lr / margin only for methods whose grid (8.4) contains them.
+# normalize_l2 is not varied: E6 no-L2 is the method proxy_softmax_noL2 (M-D22)
+VARIED_KEYS = frozenset({"lambda", "K", "n_warm", "lr", "margin", "train_augment",
                          "per_class_limit", "cohort_min_images", "steps_per_epoch", "degradation"})
 GRID_KEYS = {"contrastive": {"lr", "margin"}, "triplet": {"lr", "margin"}, "classifier": {"lr"}}
 SMOKE_KEYS = frozenset({"weights", "resize_short", "crop"})   # M-D27 substitutions

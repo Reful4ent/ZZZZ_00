@@ -88,3 +88,30 @@ def test_push_not_differentiable(tf_or_skip):
         q.push(tf.stop_gradient(z), tf.constant([0, 1]), tf.constant(0, tf.int64))
         loss = tf.reduce_sum(q.centers()[0])
     assert tape.gradient(loss, z) is None
+
+
+def test_drift_blockwise_equals_full(tf_or_skip):
+    tf = tf_or_skip
+    from metric.queues import ClassQueues
+
+    rng = np.random.default_rng(0)
+    q = ClassQueues(N_CLS, 3, D)
+    for step in range(5):
+        q.push(tf.constant(rng.normal(size=(B, D)).astype(np.float32)),
+               tf.constant(rng.integers(0, N_CLS, B).astype(np.int32)), tf.constant(step, tf.int64))
+    q.S.assign_add(tf.constant(rng.normal(size=(N_CLS, D)) * 1e-3))
+    full = np.abs(q.S.numpy() - (q.buf.numpy().astype(np.float64) * q._valid()[:, :, None]).sum(1)).max()
+    for block in (1, 2, N_CLS, 1024):
+        assert q.max_sum_drift(block=block) == full
+
+
+def test_push_updates_in_place(tf_or_skip):
+    """No TensorScatterUpdate: that op copies the whole buffer (~M_Q extra memory) every step."""
+    tf = tf_or_skip
+    from metric.queues import ClassQueues
+
+    q = ClassQueues(N_CLS, 3, D)
+    fn = tf.function(q.push, autograph=False).get_concrete_function(
+        tf.TensorSpec([None, D], tf.float32), tf.TensorSpec([None], tf.int32), tf.TensorSpec([], tf.int64))
+    ops = {op.type for op in fn.graph.get_operations()}
+    assert "TensorScatterUpdate" not in ops and "ResourceScatterNdUpdate" in ops

@@ -30,11 +30,14 @@ TensorFlow подключается только внутри обработчи
    from metric.expconfigs import materialize
    sel = {e: json.loads(Path(f"<out_root>/pilot/metric/select/{e}/selected_config.json").read_text(encoding="utf-8"))
           for e in ("e1_tune", "e4_contrastive", "e4_triplet", "e4_classifier")}
-   materialize("e1_confirm", Path("configs/metric"), selected=sel)
-   materialize("e5_limited", Path("configs/metric"), selected=sel, n_cohort_images=N)  # N_cohort_all, классы с >=4 изображениями
+   materialize("e2_k", Path("configs/metric"), selected=sel)   # pilot: e2_k, e3_nwarm, e6_noaug — планируются по отдельности
+   materialize("confirmatory", Path("configs/metric"), selected=sel, n_cohort_images=N)  # N_cohort_all, классы с >=4 изображениями
+   materialize("e7_degrade", Path("configs/metric"), selected=sel)   # ячейки ручных search-стадий E7
    ```
-   Запись: `<exp_id>.yaml` (конфиг `experiments`) и `cells/<exp_id>/*.yaml`.
-6. `python -m experiments plan` для confirmatory пишет `plan.lock.json` (ТЗ 00, §7.5; test открывается только запусками из него), затем `run` для E2–E7. `aggregate`/`report` над запусками P3 — работа P4.
+   Запись: `<exp_id>.yaml` (конфиг `experiments`) и `cells/<exp>/*.yaml`.
+6. Confirmatory планируется **один раз**: `python -m experiments plan --config configs/metric/confirmatory.yaml`. Это единственный `plan.lock.json` профиля confirmatory (ТЗ 00, §7.5: один lock на (profile, protocol_version); повторный `plan` другого конфига заменил бы lock, а после открытия test изменение плана запрещено). В него входят все ячейки E1-confirm, E4-confirm, E4-fixed, E5; отдельные `e1_confirm.yaml`, `e4_confirm.yaml`, `e4_fixed.yaml`, `e5_limited.yaml` не планировать. `e4_fixed` в общем плане разворачивается по всем 5 seed (детерминированные повторы).
+7. `python -m experiments run` — сначала завершить **всё** confirmatory-обучение; только затем `embed`/`search` на test. Повторный `metric train` (и `experiments run`) неудачного или прерванного запуска продолжает его с `checkpoints/last` (событие `auto_resume` в `run.log.jsonl`); после успешной попытки `failure.json` удаляется (история — в `errors.jsonl` и `run.json`).
+8. Стадии обученных моделей (`embed`, `search`) запускаются вручную с **развёрнутым конфигом плана** для нужного seed: `<out_root>/<profile>/plan/<protocol_version>/configs/NN-metric-train-<ячейка>-sS.yaml` (запланированный train хеширует `seeds: {seed: s, seeds: null}`; конфиг ячейки даёт другой `run_id`, и обучающий запуск не находится). E7 — не элементы плана: это ручные `search`-стадии (`--gallery` без деградации, `--queries` с `params.degradation` из `cells/e7_degrade/`), после всего обучения. `search --pairs` с деградированными запросами запрещён (§9.7). `aggregate`/`report` над запусками P3 — работа P4.
 
 ## Каталог запуска
 

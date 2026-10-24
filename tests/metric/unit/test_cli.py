@@ -179,7 +179,7 @@ def test_select_refuses_failed_runs(tmp_path, monkeypatch, capsys):
     assert planned[0].run_id in capsys.readouterr().err
 
 
-def _npz(world, name, *, method="proxy_cal", wh="a" * 64, split="validation"):
+def _npz(world, name, *, method="proxy_cal", wh="a" * 64, split="validation", degradation="none"):
     import numpy as np
     from metric.embed import EmbeddingSet, save_embeddings
     m = load_manifest(world.out_root / "manifests", "v1")
@@ -187,7 +187,7 @@ def _npz(world, name, *, method="proxy_cal", wh="a" * 64, split="validation"):
     z = np.eye(len(ids), 4, dtype=np.float32) + 0.5
     path = world.root / name
     save_embeddings(path, EmbeddingSet(z / np.linalg.norm(z, axis=1, keepdims=True), np.array(ids), wh, split,
-                                       "none", method, m.manifest_hash))
+                                       degradation, method, m.manifest_hash))
     return str(path)
 
 
@@ -236,3 +236,26 @@ def test_select_is_write_once(tmp_path, monkeypatch):
                     encoding="utf-8")
     assert _main(["select", "--config", str(world.root / "tune.yaml")]) == 5
     assert load_json(out)["selected_params"] == {"lambda": 0.1}
+
+
+def test_search_pairs_refuse_degraded_queries(tmp_path, monkeypatch):   # spec 9.7: degradations are query-only
+    world = metric_world(tmp_path, monkeypatch)
+    g, q = _npz(world, "g.npz"), _npz(world, "q.npz", degradation="noise_0.03")
+    assert _main(world.argv("search", "--gallery", g, "--queries", q, "--pairs")) == 2
+    assert not _stage_dirs(world)
+
+
+def test_weights_checksum_measured(tmp_path, monkeypatch):   # spec 5.1
+    import metric.model
+    import metric.train as train
+    from metric.params import BASE_PARAMS, WEIGHTS_SHA256
+    world = metric_world(tmp_path, monkeypatch, profile="pilot", params=BASE_PARAMS)
+    seen = []
+    monkeypatch.setattr(train, "run_training", lambda ctx: seen.append(ctx.weights_sha256) or {"status": "completed"})
+    monkeypatch.setattr(metric.model, "weights_file_sha256", lambda download=False: "0" * 64)
+    assert _main(world.argv("train")) == 2 and not seen
+    assert not (world.out_root / "pilot" / "metric").exists()
+    monkeypatch.setattr(metric.model, "weights_file_sha256", lambda download=False: WEIGHTS_SHA256)
+    assert _main(world.argv("train")) == 0 and seen == [WEIGHTS_SHA256]
+    (env,) = (world.out_root / "pilot" / "metric").glob("*/environment.json")
+    assert load_json(env)["weights_file_sha256"] == WEIGHTS_SHA256

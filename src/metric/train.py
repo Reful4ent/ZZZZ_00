@@ -181,7 +181,7 @@ def _run(ctx: TrainContext, ckpt: Path | None = None) -> dict:
     every = p["checkpoint"]["every_steps"]
     preprocess = {"resize_short": inp["resize_short"], "crop": inp["crop"], "channel_order": "RGB",
                   "preprocess": "tf.keras.applications.resnet50.preprocess_input",
-                  "embedding_dim": d, "normalize_l2": inp["normalize_l2"]}
+                  "embedding_dim": d, "normalize_l2": method.search_metric == "cosine"}
     logger = StepLogger(run_dir)
     (run_dir / "queue_state").mkdir(exist_ok=True)
     batch_frames, epoch_batches, epoch_rows, queue_checks = [], [], [], []

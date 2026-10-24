@@ -72,6 +72,11 @@ def read_state(dir: Path) -> dict:
     return load_json(_existing(dir) / "state.json")
 
 
+def has_state(dir: Path) -> bool:
+    """A full checkpoint (or its .old sibling left by an interrupted swap) exists."""
+    return (_existing(dir) / "state.json").is_file()
+
+
 def load_progress(dir: Path) -> tuple[list[dict], dict]:
     """(step rows, accumulators) of the unfinished epoch saved by save_full, to seed StepLogger.rows."""
     d = _existing(dir)

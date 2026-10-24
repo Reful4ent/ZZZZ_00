@@ -56,6 +56,7 @@ class MetricRun:
     params: dict
     images: pd.DataFrame    # SOP rows of the frozen manifest
     stage: dict | None = None
+    weights_sha256: str | None = None   # measured SHA-256 of the cached ImageNet weights file (spec 5.1)
 
     def open_split(self, split: str) -> None:
         """Before the first image of `split` is loaded: confirmatory opens test through the protocol (7.5)."""
@@ -90,7 +91,10 @@ def completed_source(cfg: Config) -> Path:
     run_dir = Path(cfg.paths.out_root) / cfg.profile / MODULE / source_run_id(cfg)
     run_json = run_dir / "run.json"
     if not ((run_dir / SUCCESS).exists() and run_json.exists() and load_json(run_json)["status"] == "completed"):
-        raise ProtocolViolationError(f"{run_dir}: the train run of this config is not completed; train it first")
+        raise ProtocolViolationError(
+            f"{run_dir}: the train run of this config is not completed; train it first. A planned train run hashes "
+            f"`seeds: {{seed: s, seeds: null}}`: pass the plan's expanded per-seed config "
+            f"(<out_root>/<profile>/plan/<protocol_version>/configs/NN-...-sS.yaml), not the cell config")
     return run_dir
 
 
@@ -107,6 +111,18 @@ def _set_tf_threads(n: int) -> dict | None:
             "inter_op": tf.config.threading.get_inter_op_parallelism_threads()}
 
 
+def _check_weights(cfg: Config) -> str | None:
+    """Spec 5.1: SHA-256 of the cached Keras ImageNet weights == params.model.weights_sha256, else ConfigError."""
+    if cfg.params.model.weights != "imagenet":
+        return None
+    from metric import model   # imports TensorFlow; train/embed handlers have loaded it already
+    measured = model.weights_file_sha256(download=True)
+    if measured != cfg.params.model.weights_sha256:
+        raise ConfigError(f"model.weights_sha256: cached ImageNet weights hash {measured} != config "
+                          f"{cfg.params.model.weights_sha256}")
+    return measured
+
+
 def prepare_run(command: str, args: argparse.Namespace, *, deterministic_ops: bool | None,
                 stage: dict | None = None) -> MetricRun:
     """config → frozen manifest → profile/split checks → seeds → run dir → RunRecord (not started)."""
@@ -114,6 +130,7 @@ def prepare_run(command: str, args: argparse.Namespace, *, deterministic_ops: bo
     if len(cfg.algorithms) != 1:
         raise ConfigError(f"algorithms: a {MODULE} {command} runs exactly one method, got {sorted(cfg.algorithms)}")
     validate_profile(cfg)
+    measured = _check_weights(cfg) if command in ("train", "embed") else None
     (base_method,) = cfg.algorithms
     oracle = cfg.data_modes.oracle.enabled
     method_id = f"{base_method}+oracle" if oracle else base_method
@@ -144,8 +161,10 @@ def prepare_run(command: str, args: argparse.Namespace, *, deterministic_ops: bo
     if previous.exists() and load_json(previous)["command"] != command:   # D-08 run_id carries no command
         raise ProtocolViolationError(f"{run_dir} belongs to `{MODULE} {load_json(previous)['command']}`; "
                                      f"`{command}` needs its own config")
-    env = collect_environment(deterministic_ops=deterministic_ops,
-                              extra=None if tf_threads is None else {"tf_threads": tf_threads})
+    extra = {} if tf_threads is None else {"tf_threads": tf_threads}
+    if measured is not None:
+        extra["weights_file_sha256"] = measured
+    env = collect_environment(deterministic_ops=deterministic_ops, extra=extra or None)
     env["nondeterminism_notes"] = [*env["nondeterminism_notes"], *NONDETERMINISM_NOTES]
     commit, dirty = git_state(Path.cwd())
     record = RunRecord(
@@ -157,4 +176,5 @@ def prepare_run(command: str, args: argparse.Namespace, *, deterministic_ops: bo
         library_primitives=primitive_versions(), paths_resolved={"data_root": cfg.paths.data_root,
                                                "manifest_dir": cfg.paths.manifest_dir, "out_root": cfg.paths.out_root})
     return MetricRun(cfg, method_id, run_id, run_dir, manifest, guard, ImageStore(cfg.paths.data_root, images, guard),
-                     record, registry_path, plan, h, base_h, params_dict(cfg.params), images, stage)
+                     record, registry_path, plan, h, base_h, params_dict(cfg.params), images, stage,
+                     (measured or cfg.params.model.weights_sha256) if cfg.params.model.weights else None)

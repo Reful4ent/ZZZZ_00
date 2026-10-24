@@ -126,3 +126,8 @@ def test_method_ids_match_methods(tf_or_skip):
         assert build_method(mid, P, 4, 1).method_id == mid
     with pytest.raises(ConfigError):
         build_method("nope", P, 4, 1)
+
+
+def test_normalize_l2_not_varied(tmp_path):   # E6 no-L2 is the method proxy_softmax_noL2, not a param
+    with pytest.raises(ConfigError):
+        validate_profile(_cfg(tmp_path, "pilot", input={"normalize_l2": False}))

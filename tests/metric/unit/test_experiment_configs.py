@@ -138,3 +138,18 @@ def test_e4_confirm(tmp_path):
 def test_selection_required(tmp_path, exp):
     with pytest.raises(ConfigError):
         materialize(exp, tmp_path)
+
+
+def test_confirmatory_is_one_plan(tmp_path):
+    """One experiments config (one plan.lock.json) holds every runnable confirmatory cell (E7 = manual stages)."""
+    cfg, runs = _plan(materialize("confirmatory", tmp_path / "all", SEL)[0])
+    ids = [r.run_id for r, _ in runs]
+    assert cfg.profile == "confirmatory" and len(ids) == len(set(ids))
+    assert {e.command for e in cfg.params.runs} == {"train", "embed"}
+    union = set()
+    for exp in ("e1_confirm", "e4_confirm", "e4_fixed", "e5_limited"):
+        union |= {r.run_id for r, _ in _mat(tmp_path / exp, exp, SEL)[1]}
+    assert union <= set(ids)
+    # the only extra runs: e4_fixed's deterministic cells over the other 4 confirmatory seeds
+    extra = [r for r, _ in runs if r.run_id not in union]
+    assert len(extra) == 2 * 4 and {r.command for r in extra} == {"embed"} and 11 not in {r.seed for r in extra}

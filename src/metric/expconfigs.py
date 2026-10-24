@@ -5,6 +5,12 @@ An experiment = one `experiments` config (params.runs) listing cell configs (one
 {experiment_id: parsed selected_config.json}, e.g. selected["e1_tune"]["selected_params"] == {"lambda": 0.1}
 (flat varied keys: lambda, K, n_warm, lr, margin). e5 also needs N_cohort_all (`n_cohort_images`, or
 selected["n_cohort_images"]); e7 uses selected["e1_tune"] and any of selected["e4_contrastive|e4_triplet|e4_classifier"].
+
+Confirmatory: plan only "confirmatory" (all of CONFIRMATORY in one experiments config). expcore keeps one
+plan.lock.json per (profile, protocol_version) and freezes it when test opens, so planning e1_confirm, e4_* or
+e5_limited separately would replace each other's lock. e7_degrade cells are `search` stages that need
+--gallery/--queries: they are not plan entries and run manually after all confirmatory training. In the combined
+plan e4_fixed's deterministic cells are expanded over all 5 confirmatory seeds (make_plan takes the plan's seeds).
 """
 import copy
 import itertools
@@ -24,6 +30,7 @@ UNTRAINED = ("imagenet_fixed", "rgb_hist")
 DEGRADATIONS = ("bright_+0.1", "bright_-0.1", "noise_0.03")
 SELECTION_FREE = ("smoke", "e1_tune", "e4_contrastive", "e4_triplet", "e4_classifier", "e4_fixed", "e6_nol2",
                   "base_minimal")
+CONFIRMATORY = ("e1_confirm", "e4_confirm", "e4_fixed", "e5_limited")
 
 
 def _grid(method, command="train", fixed=None, **axes):
@@ -106,9 +113,8 @@ def _dump(d):
     return yaml.safe_dump(d, allow_unicode=True, sort_keys=True)
 
 
-def materialize(exp_id: str, out_dir: Path, selected: dict | None = None, n_cohort_images: int | None = None) -> list[Path]:
-    """Write <out_dir>/<exp_id>.yaml (experiments config) and <out_dir>/cells/<exp_id>/*.yaml; experiments config first."""
-    out_dir = Path(out_dir)
+def _write_cells(exp_id, out_dir, selected, n_cohort_images):
+    """(base config, experiments runs, cell paths) of one experiment; writes cells/<exp_id>/*.yaml."""
     if exp_id == "smoke":   # one train run of the smoke config
         profile, cells = "smoke", [("proxy_cal", "train", {})]
         base = yaml.safe_load((REPO / "configs/smoke/metric.yaml").read_text(encoding="utf-8"))
@@ -117,7 +123,7 @@ def materialize(exp_id: str, out_dir: Path, selected: dict | None = None, n_coho
         base = yaml.safe_load((REPO / "configs/templates/metric.yaml").read_text(encoding="utf-8"))
     seeds = [11] if profile == "smoke" or exp_id == "e4_fixed" or exp_id == "base_minimal" else SEEDS[profile]
     base |= {"profile": profile, "seeds": {"seed": seeds[0], "seeds": seeds}}
-    paths, runs = [out_dir / f"{exp_id}.yaml"], []
+    paths, runs = [], []
     for method, command, over in cells:
         cell = copy.deepcopy(base)
         cell["algorithms"] = {method: "proxy_cos_softmax_v1" if method == "proxy_cal" else f"{method}_v1"}
@@ -131,5 +137,21 @@ def materialize(exp_id: str, out_dir: Path, selected: dict | None = None, n_coho
         paths[-1].parent.mkdir(parents=True, exist_ok=True)
         paths[-1].write_bytes(_dump(cell).encode())
         runs.append({"module": "metric", "command": command, "config": rel})
+    return base, runs, paths
+
+
+def materialize(exp_id: str, out_dir: Path, selected: dict | None = None, n_cohort_images: int | None = None) -> list[Path]:
+    """Write <out_dir>/<exp_id>.yaml (experiments config) and <out_dir>/cells/<exp>/*.yaml; experiments config first.
+
+    exp_id "confirmatory": one experiments config over the cells of every CONFIRMATORY experiment.
+    """
+    out_dir = Path(out_dir)
+    paths, runs = [out_dir / f"{exp_id}.yaml"], []
+    for sub in CONFIRMATORY if exp_id == "confirmatory" else (exp_id,):
+        base, sub_runs, sub_paths = _write_cells(sub, out_dir, selected, n_cohort_images)
+        runs += sub_runs
+        paths += sub_paths
+    if exp_id == "confirmatory":
+        base |= {"seeds": {"seed": 11, "seeds": SEEDS["confirmatory"]}}
     paths[0].write_bytes(_dump({**base, "algorithms": {}, "params": {"runs": runs}}).encode())
     return paths
