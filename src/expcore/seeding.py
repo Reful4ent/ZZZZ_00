@@ -6,7 +6,7 @@ import sys
 import cv2
 import numpy as np
 
-STREAM_INDEX = {"sampler": 0, "augment": 1, "init": 2, "bootstrap": 3}
+STREAM_INDEX = {"sampler": 0, "augment": 1, "init": 2, "bootstrap": 3, "degrade": 4}
 
 _last_seed: int | None = None
 
