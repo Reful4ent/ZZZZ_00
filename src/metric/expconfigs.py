@@ -51,6 +51,11 @@ def _lambda_sensitivity(selected):
     return max(pos, key=lambda c: (c["mean_val_recall_at_1"], -c["params"]["lambda"]))["params"]["lambda"]
 
 
+def _e4_models(selected):
+    return [(e4[3:], "train", _selected(selected, e4)["selected_params"])
+            for e4 in ("e4_contrastive", "e4_triplet", "e4_classifier")]
+
+
 def _cells(exp, selected, n_cohort):
     """(profile, [(method_id, command, flat overrides)])."""
     if exp == "e1_tune":
@@ -69,6 +74,8 @@ def _cells(exp, selected, n_cohort):
         return "pilot", _grid("classifier", lr=(1e-5, 1e-4, 3e-4, 1e-3))
     if exp == "e4_fixed":   # untrained: one deterministic run on the split (seed 11 recorded for the contract)
         return "confirmatory", [(m, "embed", {}) for m in UNTRAINED]
+    if exp == "e4_confirm":
+        return "confirmatory", _e4_models(selected)
     if exp == "e5_limited":
         if not n_cohort:
             n_cohort = (selected or {}).get("n_cohort_images")
@@ -85,9 +92,7 @@ def _cells(exp, selected, n_cohort):
         return "pilot", _grid("base_minimal", fixed={"lambda": 0, "queues": False})
     if exp == "e7_degrade":
         models = _grid("proxy_cal", **{"lambda": sorted({_lambda_star(selected), 0}, reverse=True)})
-        for e4 in ("e4_contrastive", "e4_triplet", "e4_classifier"):
-            if e4 in selected:
-                models.append((e4[3:], "train", selected[e4]["selected_params"]))
+        models += _e4_models(selected)
         models += [(m, "train", {}) for m in UNTRAINED]
         return "confirmatory", [(m, "search", {**o, "degradation": d}) for m, _, o in models for d in DEGRADATIONS]
     raise ConfigError(f"unknown experiment {exp!r}")

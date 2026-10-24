@@ -21,6 +21,7 @@ E1 = {"selected_params": {"lambda": 0.1},
                      for l, r in ((0, 0.5), (0.01, 0.4), (0.1, 0.45), (1, 0.45))]}
 SEL = {"e1_tune": E1, "n_cohort_images": 1000,
        "e4_contrastive": {"selected_params": {"lr": 1e-4, "margin": 0.5}},
+       "e4_triplet": {"selected_params": {"lr": 1e-5, "margin": 0.2}},
        "e4_classifier": {"selected_params": {"lr": 3e-4}}}
 
 
@@ -120,11 +121,20 @@ def test_e6_noaug_and_e7(tmp_path):
     cells = _cells(tmp_path / "e7" / "e7_degrade.yaml")
     assert {c["params"]["degradation"] for c in cells} == {"bright_+0.1", "bright_-0.1", "noise_0.03"}
     assert cfg.profile == "confirmatory" and {e.command for e in cfg.params.runs} == {"search"}
-    # models: E1 lambda*, lambda=0, selected E4 contrastive/classifier, imagenet_fixed, rgb_hist
-    assert len(cells) == 3 * 6 and len(runs) == 3 * 6 * 5
+    # models: E1 lambda*, lambda=0, 3 selected E4, imagenet_fixed, rgb_hist
+    assert len(cells) == 3 * 7 and len(runs) == 3 * 7 * 5
 
 
-@pytest.mark.parametrize("exp", ["e1_confirm", "e2_k", "e3_nwarm", "e5_limited", "e6_noaug", "e7_degrade"])
+def test_e4_confirm(tmp_path):
+    cfg, runs = _mat(tmp_path, "e4_confirm", SEL)
+    assert cfg.profile == "confirmatory" and len(runs) == 3 * 5
+    assert {e.command for e in cfg.params.runs} == {"train"}
+    for exp in ("e4_confirm", "e7_degrade"):
+        with pytest.raises(ConfigError):
+            materialize(exp, tmp_path / exp, {k: v for k, v in SEL.items() if k != "e4_triplet"})
+
+
+@pytest.mark.parametrize("exp", ["e4_confirm", "e1_confirm", "e2_k", "e3_nwarm", "e5_limited", "e6_noaug", "e7_degrade"])
 def test_selection_required(tmp_path, exp):
     with pytest.raises(ConfigError):
         materialize(exp, tmp_path)
