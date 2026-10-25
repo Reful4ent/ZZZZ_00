@@ -60,3 +60,12 @@ def test_full_template_loads():
     from tests.conftest import TEST_MODULE
     cfg = load_config(REPO / "configs" / "templates" / "full.yaml", module=TEST_MODULE)
     assert cfg.profile == "pilot"
+
+
+def test_experiments_cli_imports_program_packages():   # TZ03 request 1: build-manifests sees their pair builders
+    import subprocess
+    import sys
+    code = ("import sys, experiments.cli; "
+            "assert {'photometric', 'geometric', 'metric'} <= set(sys.modules); "
+            "assert 'tensorflow' not in sys.modules")
+    assert subprocess.run([sys.executable, "-c", code], capture_output=True, cwd=REPO).returncode == 0

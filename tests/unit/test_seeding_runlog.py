@@ -168,3 +168,8 @@ def test_git_state_nested_untracked_repo(tmp_path):   # review P5-I5
     (tmp_path / "папка с пробелом").mkdir()
     (tmp_path / "папка с пробелом" / "u.txt").write_text("u", encoding="utf-8")
     assert git_state(tmp_path / "папка с пробелом")[1] not in (None, dirty)   # whole work tree, from a subdir
+
+
+def test_degrade_stream_exists():   # TZ03 request 4: query degradations get their own stream
+    assert STREAM_INDEX["degrade"] == 4
+    assert stream(11, "degrade", 0).random() != stream(11, "augment", 0).random()

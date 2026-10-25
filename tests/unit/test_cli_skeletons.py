@@ -1,3 +1,4 @@
+import dataclasses
 import importlib
 import re
 import subprocess
@@ -6,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from expcore import registry
+from expcore import config, registry
 from expcore.config import config_hash, load_config
 from expcore.io import load_json
 from expcore.protocol import load_registry, write_plan_lock
@@ -17,6 +18,16 @@ from tests.fakes import CrashOnUnitPredictor, RandomScorePredictor
 
 pytestmark = pytest.mark.unit
 
+
+@dataclasses.dataclass(frozen=True)
+class EmptyParams:
+    """Stands in for the real metric schema so these tests keep exercising expcore mechanics only."""
+
+
+@pytest.fixture
+def empty_metric_params(monkeypatch):
+    monkeypatch.setitem(config._PARAMS_SCHEMAS, "metric", EmptyParams)
+
 REPO = Path(__file__).resolve().parents[2]
 MODULE_CMDS = [("photometric", ["run"]), ("geometric", ["run"]), ("metric", ["train"]), ("metric", ["embed"]),
                ("metric", ["search"])]
@@ -24,6 +35,13 @@ MODULE_CMDS = [("photometric", ["run"]), ("geometric", ["run"]), ("metric", ["tr
 
 def _main(module):
     return importlib.import_module(f"{module}.cli").main
+
+
+def _expcore_metric(argv):
+    """The expcore metric skeleton (spec TZ03 3.4 item 5): execute_run(query=True) behind run_cli."""
+    from expcore.cli_common import command_parser, execute_run, run_cli
+    return run_cli(lambda a: execute_run("metric", a.command, a, query=True), argv,
+                   parser=command_parser("metric", ("train", "embed", "search")))
 
 
 def _run_dir(world, module, profile="smoke"):
@@ -37,9 +55,12 @@ def test_help_exits_zero(mod, cmd):   # T-CLI-01
 
 
 @pytest.mark.parametrize("mod,cmd", MODULE_CMDS)
-def test_skeleton_returns_6(tmp_path, monkeypatch, mod, cmd):
+def test_skeleton_returns_6(tmp_path, monkeypatch, mod, cmd, request):
+    if mod == "metric":
+        request.getfixturevalue("empty_metric_params")
     world = make_world(tmp_path, monkeypatch)
-    assert _main(mod)(world.argv(*cmd)) == 6
+    main = _expcore_metric if mod == "metric" else _main(mod)
+    assert main(world.argv(*cmd)) == 6
     run = load_json(_run_dir(world, mod) / "run.json")
     assert run["status"] == "failed" and run["failure"]["type"] == "NotImplementedAlgorithm"
     assert run["command"] == cmd[0]
@@ -73,11 +94,11 @@ def test_registered_fake_algorithm_runs(tmp_path, monkeypatch):
     assert len(load_json(run_dir / "run.json")["attempts"]) == 1
 
 
-def test_metric_search_runs_queries(tmp_path, monkeypatch):
+def test_metric_search_runs_queries(tmp_path, monkeypatch, empty_metric_params):
     from tests.fakes import BatchQueryPredictor
     world = make_world(tmp_path, monkeypatch)
     monkeypatch.setitem(registry._ALGORITHMS, ("metric", "fake"), BatchQueryPredictor())
-    assert _main("metric")(world.argv("search")) == 0
+    assert _expcore_metric(world.argv("search")) == 0
     pred = read_predictions(_run_dir(world, "metric"))
     assert pred.pair_id.isna().all() and pred.query_id.is_unique and set(pred.timing_mode) == {"amortized_batch"}
 
@@ -146,12 +167,12 @@ def test_pilot_runs_without_test_splits(tmp_path, monkeypatch):
     assert not (world.out_root / "confirmatory").exists()
 
 
-def test_completed_run_of_another_command_refused(tmp_path, monkeypatch):   # review P6-I3
+def test_completed_run_of_another_command_refused(tmp_path, monkeypatch, empty_metric_params):   # review P6-I3
     from tests.fakes import BatchQueryPredictor
     world = make_world(tmp_path, monkeypatch)
     monkeypatch.setitem(registry._ALGORITHMS, ("metric", "fake"), BatchQueryPredictor())
-    assert _main("metric")(world.argv("train")) == 0
-    assert _main("metric")(world.argv("embed")) == 5   # same run_id (D-08 has no command): not silently skipped
+    assert _expcore_metric(world.argv("train")) == 0
+    assert _expcore_metric(world.argv("embed")) == 5   # same run_id (D-08 has no command): not silently skipped
 
 
 def test_non_utf8_stdout_does_not_crash(monkeypatch):   # review P6-I5: cp1251 console, redirected output

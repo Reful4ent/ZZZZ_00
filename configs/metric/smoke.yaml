@@ -1,0 +1,106 @@
+algorithms: {}
+data_modes:
+  oracle:
+    enabled: false
+    reason: null
+datasets:
+  hpatches:
+    categories: null
+    dataset_id: hpatches
+    expected:
+      sequences: 10
+    fixture: true
+    manifest_version: smoke-v1
+    n_validation: null
+    provenance:
+      archive_name: hpatches-sequences-release.tar.gz
+      download_date: null
+      license: see provider
+      license_file: null
+      source_url: https://github.com/hpatches/hpatches-dataset
+  kadid10k:
+    categories: null
+    dataset_id: kadid10k
+    expected:
+      derivatives: 24
+      originals: 6
+    fixture: true
+    manifest_version: smoke-v1
+    n_validation: 2
+    provenance:
+      archive_name: kadid10k.zip
+      download_date: null
+      license: see provider
+      license_file: null
+      source_url: https://database.mmsp-kn.de/kadid-10k-database.html
+  mvtec_ad:
+    categories:
+    - carpet
+    - leather
+    - tile
+    - wood
+    dataset_id: mvtec_ad
+    expected:
+      test_defect: 8
+      test_good: 8
+      train_good: 32
+    fixture: true
+    manifest_version: smoke-v1
+    n_validation: null
+    provenance:
+      archive_name: mvtec_anomaly_detection.tar.xz
+      download_date: null
+      license: CC BY-NC-SA 4.0
+      license_file: null
+      source_url: https://www.mvtec.com/company/research/datasets/mvtec-ad
+  sop:
+    categories: null
+    dataset_id: sop
+    expected:
+      products: 14
+      test_images: 12
+      train_images: 30
+    fixture: true
+    manifest_version: smoke-v1
+    n_validation: null
+    provenance:
+      archive_name: Stanford_Online_Products.zip
+      download_date: null
+      license: see provider
+      license_file: null
+      source_url: https://cvgl.stanford.edu/projects/lifted_struct/
+decision:
+  criterion_id: null
+  tie_rule: '>='
+determinism:
+  deterministic_ops: true
+  numpy_threads: 1
+  opencv_threads: 1
+inputs:
+  color_order: bgr
+  pair_columns:
+  - pair_id
+  - query_id
+  - reference_id
+  - relation_id
+logging:
+  dir: logs
+  level: INFO
+params:
+  runs:
+  - command: train
+    config: cells/smoke/train-proxy_cal.yaml
+    module: metric
+paths:
+  data_root: data/smoke
+  manifest_dir: data/smoke/manifests
+  out_root: out
+profile: smoke
+protocol_version: '1'
+runner:
+  chunk_size: 256
+schema_version: '1'
+seeds:
+  seed: 11
+  seeds:
+  - 11

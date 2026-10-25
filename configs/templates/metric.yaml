@@ -1,0 +1,158 @@
+# Metric config template (spec §5.6, TZ-03 §11). Every key is required, unknown keys are
+# rejected, nothing has a default. Copy and fill in for a concrete run.
+schema_version: "1"
+protocol_version: "1"
+profile: pilot                 # smoke | pilot | confirmatory
+
+seeds:
+  seed: 11                     # single run; from the profile's allowed set
+  seeds: [11, 23, 37]          # plan expansion; from the profile's allowed set
+
+datasets:
+  kadid10k:
+    dataset_id: kadid10k
+    manifest_version: "v1"
+    fixture: false             # true only in the smoke profile
+    categories: null
+    n_validation: 20           # KADID real data: exactly 20
+    expected: {originals: 81, derivatives: 10125}
+    provenance:
+      source_url: "https://database.mmsp-kn.de/kadid-10k-database.html"
+      archive_name: "kadid10k.zip"
+      download_date: null
+      license: "see provider"
+      license_file: null
+  hpatches:
+    dataset_id: hpatches
+    manifest_version: "v1"
+    fixture: false
+    categories: null
+    n_validation: null
+    expected: {}               # empty: completeness reported as unverified
+    provenance:
+      source_url: "https://github.com/hpatches/hpatches-dataset"
+      archive_name: "hpatches-sequences-release.tar.gz"
+      download_date: null
+      license: "see provider"
+      license_file: null
+  mvtec_ad:
+    dataset_id: mvtec_ad
+    manifest_version: "v1"
+    fixture: false
+    categories: [carpet, leather, tile, wood]
+    n_validation: null
+    expected: {}
+    provenance:
+      source_url: "https://www.mvtec.com/company/research/datasets/mvtec-ad"
+      archive_name: "mvtec_anomaly_detection.tar.xz"
+      download_date: null
+      license: "CC BY-NC-SA 4.0"
+      license_file: null
+  sop:
+    dataset_id: sop
+    manifest_version: "v1"
+    fixture: false
+    categories: null
+    n_validation: null
+    expected: {products: 22634, train_images: 59551, test_images: 60502}
+    provenance:
+      source_url: "https://cvgl.stanford.edu/projects/lifted_struct/"
+      archive_name: "Stanford_Online_Products.zip"
+      download_date: null
+      license: "see provider"
+      license_file: null
+
+inputs:
+  pair_columns: [pair_id, query_id, reference_id, relation_id]   # y_match / gt_* forbidden
+  color_order: bgr             # bgr | rgb | gray
+
+data_modes:
+  oracle: {enabled: false, reason: null}
+
+algorithms: {proxy_cal: proxy_cos_softmax_v1}   # method_id -> version (M-D32)
+
+params:
+  model:
+    backbone: resnet50
+    weights: imagenet
+    weights_sha256: 66c8b43daff3fcc15bc4f30e3d2a167e21a14d9c9598a5394e5516471f4af504
+    embedding_dim: 128
+    bn_mode: frozen_stats_trainable_affine
+  input:
+    resize_short: 256
+    crop: 224
+    train_augment: true
+    flip_p: 0.5
+    normalize_l2: true
+  batch:
+    classes: 16
+    per_class: 2
+  optimizer:
+    name: adam
+    lr: 0.0001
+    beta_1: 0.9
+    beta_2: 0.999
+    epsilon: 1.0e-07
+  train:
+    epochs: 40
+    steps_per_epoch: auto
+    precision: fp32
+  proxy:
+    kappa: 16
+    init: normal_then_normalize
+    eps_p: 1.0e-12
+  embed:
+    eps_z: 1.0e-12
+  calibration:
+    lambda: 0.0
+    queues: true
+    K: 32
+    n_warm: 4
+  queue:
+    check_every: 1000
+    sum_tol: 1.0e-06
+  loss:
+    margin: null
+  data:
+    class_subset: null
+    per_class_limit: null
+    cohort_min_images: null
+  checkpoint:
+    every_steps: null
+  search:
+    block_q: 1024
+    block_g: 8192
+    k:
+    - 1
+    - 5
+    - 10
+    d2_tol: 1.0e-06
+  pairs:
+    max_pos_per_class: 20
+    max_attempts: 100
+  threshold:
+    criterion_id: max_recall_at_fpr_le_0.05
+    fpr_max: 0.05
+  degradation: none
+
+
+decision:
+  tie_rule: ">="               # ">=" | ">"
+  criterion_id: null
+
+determinism:
+  deterministic_ops: true
+  opencv_threads: 1
+  numpy_threads: 1
+
+runner:
+  chunk_size: 256
+
+logging:
+  level: INFO
+  dir: logs
+
+paths:                         # excluded from config_hash; overridable from CLI
+  data_root: data
+  manifest_dir: data/manifests
+  out_root: out

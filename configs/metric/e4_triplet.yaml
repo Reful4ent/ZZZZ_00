@@ -1,0 +1,113 @@
+algorithms: {}
+data_modes:
+  oracle:
+    enabled: false
+    reason: null
+datasets:
+  hpatches:
+    categories: null
+    dataset_id: hpatches
+    expected: {}
+    fixture: false
+    manifest_version: v1
+    n_validation: null
+    provenance:
+      archive_name: hpatches-sequences-release.tar.gz
+      download_date: null
+      license: see provider
+      license_file: null
+      source_url: https://github.com/hpatches/hpatches-dataset
+  kadid10k:
+    categories: null
+    dataset_id: kadid10k
+    expected:
+      derivatives: 10125
+      originals: 81
+    fixture: false
+    manifest_version: v1
+    n_validation: 20
+    provenance:
+      archive_name: kadid10k.zip
+      download_date: null
+      license: see provider
+      license_file: null
+      source_url: https://database.mmsp-kn.de/kadid-10k-database.html
+  mvtec_ad:
+    categories:
+    - carpet
+    - leather
+    - tile
+    - wood
+    dataset_id: mvtec_ad
+    expected: {}
+    fixture: false
+    manifest_version: v1
+    n_validation: null
+    provenance:
+      archive_name: mvtec_anomaly_detection.tar.xz
+      download_date: null
+      license: CC BY-NC-SA 4.0
+      license_file: null
+      source_url: https://www.mvtec.com/company/research/datasets/mvtec-ad
+  sop:
+    categories: null
+    dataset_id: sop
+    expected:
+      products: 22634
+      test_images: 60502
+      train_images: 59551
+    fixture: false
+    manifest_version: v1
+    n_validation: null
+    provenance:
+      archive_name: Stanford_Online_Products.zip
+      download_date: null
+      license: see provider
+      license_file: null
+      source_url: https://cvgl.stanford.edu/projects/lifted_struct/
+decision:
+  criterion_id: null
+  tie_rule: '>='
+determinism:
+  deterministic_ops: true
+  numpy_threads: 1
+  opencv_threads: 1
+inputs:
+  color_order: bgr
+  pair_columns:
+  - pair_id
+  - query_id
+  - reference_id
+  - relation_id
+logging:
+  dir: logs
+  level: INFO
+params:
+  runs:
+  - command: train
+    config: cells/e4_triplet/train-triplet-lr1e-05-margin0.1.yaml
+    module: metric
+  - command: train
+    config: cells/e4_triplet/train-triplet-lr1e-05-margin0.2.yaml
+    module: metric
+  - command: train
+    config: cells/e4_triplet/train-triplet-lr0.0001-margin0.1.yaml
+    module: metric
+  - command: train
+    config: cells/e4_triplet/train-triplet-lr0.0001-margin0.2.yaml
+    module: metric
+paths:
+  data_root: data
+  manifest_dir: data/manifests
+  out_root: out
+profile: pilot
+protocol_version: '1'
+runner:
+  chunk_size: 256
+schema_version: '1'
+seeds:
+  seed: 11
+  seeds:
+  - 11
+  - 23
+  - 37
