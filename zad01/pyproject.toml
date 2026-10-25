@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "photometric"
+version = "1.0.0"
+description = "P1 photometric: стенд глобального сравнения изображений (ТЗ 01, раздел 3.2)"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "scipy",
+    "scikit-image",
+    "PyWavelets",
+    "Pillow",
+    "pandas",
+    "pyarrow",
+    "pyyaml",
+    "matplotlib",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.setuptools.packages.find]
+include = ["photometric*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.setuptools.package-data]
+photometric = ["data/*.csv"]

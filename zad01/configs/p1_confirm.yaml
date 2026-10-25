@@ -1,0 +1,50 @@
+# P1 photometric — подтверждающий прогон (ТЗ 01, редакция 1.0).
+# Численные настройки — назначенный проектный протокол, а не оптимизированные параметры.
+run_name: p1_confirm
+output_dir: outputs/p1_confirm
+color_profile: sRGB
+
+kadid:
+  root: D:/datasets/kadid10k        # каталог с images/ и dmos.csv (скачать вручную)
+  images_subdir: images
+  dmos_csv: dmos.csv
+  types: ["07", "08", "10", "11", "12", "13", "14", "16", "17", "18", "25"]
+  levels: [1, 2, 3, 4, 5]
+  originals: null                   # null — все 81 оригинал
+  validate_full: true               # проверка 81 + 10 125 + dmos.csv
+
+split:                              # разбиение по original_id, PCG64(seed)
+  seed: 20261023
+  fractions: {validation: 0.5, test: 0.5}
+
+pairs:                              # ФОТО-02: 1 положительная + 3 отрицательные, PCG64(pair_seed)
+  seed: 20261024
+  negatives_per_query: 3
+
+thresholds:                         # Г2-167
+  alpha: 0.05
+  tune_experiment: P1-E1
+  tune_split: validation
+
+methods: [mse, ncc, zncc, hist_rgb8, ciede2000_mean, ahash64, dhash64, phash64, whash64]
+
+experiments:
+  P1-E1: {enabled: true}
+  P1-E2:
+    enabled: true
+    brightness: [-0.2, -0.1, 0.0, 0.1, 0.2]
+    contrast: [0.6, 0.8, 1.0, 1.2, 1.4]
+    gamma: [0.6, 0.8, 1.0, 1.2, 1.6]
+    noise_sigma: [0.0, 0.01, 0.03, 0.05, 0.1]
+    noise_seeds: 5
+    noise_seed: 20261025
+    jpeg_quality: [100, 90, 70, 50, 30]
+    jpeg: {library: pillow, subsampling: "4:4:4", optimize: false}
+  P1-E3: {enabled: true, seed: 20261026}
+  P1-E4: {enabled: true, n_images: 8, warmup: 2, repeats: 10}
+
+cache:
+  memory_mb: 1536                   # LRU представлений эталонов в памяти
+  persist_pixel_queries: false      # попиксельные представления запросов не пишутся на диск
+
+plots: true
