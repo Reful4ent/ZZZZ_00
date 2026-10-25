@@ -1,0 +1,3 @@
+# Отдельное окружение для адаптера SuperPoint (ГЕОМ-03).
+-r requirements.txt
+torch>=2.2

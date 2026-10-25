@@ -1,0 +1,67 @@
+features:
+  method: sift
+  max_keypoints: 2000
+  max_side: 1024
+  superpoint_weights: ''
+  superpoint_weights_url: https://github.com/magicleap/SuperPointPretrainedNetwork/raw/master/superpoint_v1.pth
+  superpoint_weights_sha256: ''
+  superpoint_weights_license: MagicLeap SuperPointPretrainedNetwork license (non-commercial
+    research)
+  superpoint_weights_commit: ''
+  superpoint_conf_thresh: 0.015
+  superpoint_nms_dist: 4
+  superpoint_border: 4
+matching:
+  ratio: 0.75
+ransac:
+  estimator: own
+  eps_g: 3.0
+  max_trials: 5000
+  confidence: 0.999
+  adaptive: true
+  seed: 2026
+  refine: true
+  refine_max_nfev: 100
+  w_eps: 1.0e-12
+  collinear_tol: 0.001
+gate:
+  n_min: 12
+  rho_min: 0.25
+  eps_med: 2.0
+  c_I_min: 0.1
+  c_E_min: 0.1
+  cond_max: 10000000000.0
+  w_min: 1.0e-08
+  use_support: true
+  use_coverage: true
+  area_ratio_range: null
+align:
+  rho_vis_min: 0.5
+  a_min: 1024
+  border_px: 0
+compare:
+  grid: 8
+  v_min: 0.8
+  n_min_area: 16
+  tau_pix_grid:
+  - 2.0
+  - 5.0
+  - 10.0
+  region_stat: mean_delta
+  compensation: false
+  cal_band: 0.1
+  a_bounds:
+  - 0.8
+  - 1.2
+  b_bounds:
+  - -0.1
+  - 0.1
+  critical: none
+decision:
+  tau_pix: 5.0
+  tau_d: 5.0
+  tau_a: 0.1
+  tau_B: 0.1
+  tau_D: 5.0
+  use_B: true
+  use_critical: true
